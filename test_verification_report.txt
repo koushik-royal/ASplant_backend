@@ -1,0 +1,47 @@
+==================================================
+              DATABASE VERIFICATION              
+==================================================
+
+--- 1. Creating a new Customer account ---
+Customer created successfully! ID: 8
+
+--- 2. Showing MySQL record from customers table ---
+ID            : 8
+Name          : Test Customer Name
+Email         : test.customer@example.com
+Password Hash : $pbkdf2-sha256$29000$cU5pLUVojbHW.v8fw1hr7Q$VB646dshF8MocfwxYzv5HsMlnpDbqQFpLtDYks75QG4
+✅ SUCCESS: Only password_hash is stored in the database. Plain password does NOT exist.
+
+--- 3. Creating a new Admin account ---
+Current Admin Count in database: 1
+Admin created successfully! ID: 9
+
+--- 4. Showing MySQL record from admins table ---
+ID            : 9
+Name          : Test Admin Name
+Email         : test.admin@example.com
+Password Hash : $pbkdf2-sha256$29000$.t.7936PkVJKSWnNOWeM8Q$/jGXo/HccRNJwz7AFAU1YJLoX5KKxVBqQ7MmsmglYdc
+✅ SUCCESS: Only password_hash is stored in the database. Plain password does NOT exist.
+
+--- 5. Testing Forgot Password & Reset Flow ---
+
+[BEFORE RESET]
+Email        : test.customer@example.com
+Old Hash     : $pbkdf2-sha256$29000$cU5pLUVojbHW.v8fw1hr7Q$VB646dshF8MocfwxYzv5HsMlnpDbqQFpLtDYks75QG4
+
+Password reset successfully performed!
+
+[AFTER RESET]
+Email        : test.customer@example.com
+New Hash     : $pbkdf2-sha256$29000$RYhxztk7Z0xpbY3xHmMM4Q$8sVHXIZOSBCPdu7RA9961x.Utc9ie6Eq8fYrezr6pqA
+✅ SUCCESS: password_hash successfully changed in database.
+
+--- 6. Verifying login works with the new password ---
+Login attempt with new password: SUCCESS
+Login attempt with old password (should fail): FAILED (As expected)
+✅ SUCCESS: Login works with new password, and old password is successfully invalidated.
+
+--- 7. Confirming no plain password exists anywhere in MySQL tables ---
+✅ CONFIRMED: No plain passwords exist in either the customers or admins tables. Only secure hashes are stored.
+
+==================================================

@@ -1,0 +1,28 @@
+# Virtual environments
+venv/
+.venv/
+.venv312/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment
+.env
+env.txt
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Uploads
+uploads/
+
+# Database
+plantora.db
+
+# Backup files
+orders_backup_before_razorpay_drop.json
