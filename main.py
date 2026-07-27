@@ -90,6 +90,16 @@ def run_migrations():
             # Always run column rename migrations if the tables exist to ensure alignment
             tables_res = conn.execute(text("SHOW TABLES")).fetchall()
             current_tables = [row[0] for row in tables_res]
+            if "plants" in current_tables:
+                col_res = conn.execute(text("SHOW COLUMNS FROM plants")).fetchall()
+                cols = [row[0] for row in col_res]
+                if "temperature" not in cols:
+                    conn.execute(text("ALTER TABLE plants ADD COLUMN temperature VARCHAR(100)"))
+                    log_content.append("\nplants: added column temperature")
+                if "humidity" not in cols:
+                    conn.execute(text("ALTER TABLE plants ADD COLUMN humidity VARCHAR(100)"))
+                    log_content.append("\nplants: added column humidity")
+
             if "customers" in current_tables:
                 col_res = conn.execute(text("SHOW COLUMNS FROM customers")).fetchall()
                 cols = [row[0] for row in col_res]

@@ -24,6 +24,8 @@ class Product(Base):
     benefits = Column(String(255))
     watering = Column(String(100))
     sunlight = Column(String(100))
+    temperature = Column(String(100))
+    humidity = Column(String(100))
     pot_size = Column(String(100))
     is_active = Column(Boolean, default=True)
     status = Column(String(20), default="active")

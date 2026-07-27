@@ -2,12 +2,15 @@ import os
 import shutil
 import random
 from datetime import datetime, timedelta
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from database.connection import get_db
 from models.user import User, OTPVerification
 from services.email_service import send_otp_email
 from config import settings
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
@@ -53,6 +56,7 @@ def send_otp(payload: SendOtpRequest, db: Session = Depends(get_db)):
     if not result["success"]:
         print(f"[OTP] ❌ Email delivery FAILED for {email}")
         print(f"[OTP] Error: {result['message']}")
+        # pyrefly: ignore [missing-import]
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,

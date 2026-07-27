@@ -3,7 +3,9 @@ import shutil
 import json
 import random
 from datetime import datetime, timedelta
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from database.connection import get_db
 from models.user import User, Admin, OTPVerification
@@ -11,6 +13,7 @@ from schemas.auth import UserRegister, UserLogin, UserResponse, UserUpdate, Admi
 from services.auth_service import auth_service
 from config import settings
 from typing import List
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter()
@@ -378,6 +381,7 @@ def send_reset_otp(payload: SendResetOtpRequest, db: Session = Depends(get_db)):
 
     if not result["success"]:
         print(f"[RESET-OTP] ❌ Email failed: {result['message']}")
+        # pyrefly: ignore [missing-import]
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
@@ -473,3 +477,20 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
         "success": True,
         "message": "Password reset successfully. You can now login with your new password."
     }
+
+@router.post("/auth/fcm-token")
+def register_fcm_token(email: str, token: str, db: Session = Depends(get_db)):
+    # Save token for User or Admin
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        user.fcm_token = token
+        db.commit()
+        return {"status": "success", "message": "FCM token saved for customer"}
+        
+    admin = db.query(Admin).filter(Admin.email == email).first()
+    if admin:
+        admin.fcm_token = token
+        db.commit()
+        return {"status": "success", "message": "FCM token saved for admin"}
+        
+    raise HTTPException(status_code=404, detail="User not found")

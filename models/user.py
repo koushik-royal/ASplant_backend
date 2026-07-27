@@ -18,6 +18,7 @@ class User(Base):
     district = Column(String(100))
     country = Column(String(100))
     profile_image = Column(String(255), default="")
+    fcm_token = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     updated_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
 

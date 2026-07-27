@@ -1,7 +1,7 @@
 DATABASE SCHEMA REPORT
 ======================
 
-Existing tables: admins, cart, categories, customers, delivery_proof, delivery_tracking, notifications, order_items, orders, orders_backup_razorpay, otp_verifications, payment_settings, payments, plant_ratings, plants, product_images, qr_payment, wishlist
+Existing tables: admins, cart, categories, customers, delivery_proof, delivery_settings, delivery_tracking, notifications, order_items, orders, orders_backup_razorpay, otp_verifications, payment_settings, payments, plant_ratings, plants, product_images, qr_payment, store_settings, wishlist
 
 
 Table: admins
@@ -43,6 +43,7 @@ Table: customers
   - updated_at (timestamp)
   - district (varchar(100))
   - country (varchar(100))
+  - fcm_token (varchar(255))
 
 Table: delivery_proof
   - id (int(11))
@@ -50,6 +51,15 @@ Table: delivery_proof
   - image_path (varchar(255))
   - signature_path (varchar(255))
   - verified_at (timestamp)
+
+Table: delivery_settings
+  - id (int(11))
+  - standard_name (varchar(100))
+  - standard_days (varchar(50))
+  - standard_price (int(11))
+  - express_name (varchar(100))
+  - express_days (varchar(50))
+  - express_price (int(11))
 
 Table: delivery_tracking
   - id (int(11))
@@ -66,6 +76,7 @@ Table: notifications
   - type (varchar(50))
   - is_read (tinyint(1))
   - created_at (timestamp)
+  - deleted (tinyint(1))
 
 Table: order_items
   - id (int(11))
@@ -191,6 +202,8 @@ Table: plants
   - image_url (varchar(255))
   - created_at (timestamp)
   - deleted_at (datetime)
+  - temperature (varchar(100))
+  - humidity (varchar(100))
 
 Table: product_images
   - id (int(11))
@@ -207,6 +220,10 @@ Table: qr_payment
   - updated_by_admin (int(11))
   - updated_at (timestamp)
   - account_holder (varchar(100))
+
+Table: store_settings
+  - id (int(11))
+  - low_stock_threshold (int(11))
 
 Table: wishlist
   - id (int(11))

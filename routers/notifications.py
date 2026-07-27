@@ -46,19 +46,105 @@ def get_notifications(email: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
     if not user:
         # If admin or unregistered, return only system notifications
-        return db.query(Notification).filter(Notification.user_id.is_(None)).order_by(Notification.created_at.desc()).all()
+        return db.query(Notification).filter(Notification.user_id.is_(None), Notification.deleted == False).order_by(Notification.created_at.desc()).all()
         
     # Get user specific + general system notifications
     return db.query(Notification).filter(
-        (Notification.user_id == user.id) | (Notification.user_id.is_(None))
+        ((Notification.user_id == user.id) | (Notification.user_id.is_(None))) & (Notification.deleted == False)
     ).order_by(Notification.created_at.desc()).all()
+
+@router.get("/notifications/unread-count")
+def get_unread_count(email: str, db: Session = Depends(get_db)):
+    """Returns the number of unread notifications for the given email (admin or customer)."""
+    from models.user import Admin
+    admin = db.query(Admin).filter(Admin.email == email).first()
+    if admin:
+        # Admin: count unread system-wide notifications
+        count = db.query(Notification).filter(
+            Notification.user_id.is_(None),
+            Notification.deleted == False,
+            Notification.is_read == False
+        ).count()
+    else:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            count = db.query(Notification).filter(
+                ((Notification.user_id == user.id) | (Notification.user_id.is_(None))),
+                Notification.deleted == False,
+                Notification.is_read == False
+            ).count()
+        else:
+            count = 0
+    return {"unread_count": count}
+
+@router.delete("/notifications/clear")
+def clear_notifications(email: str, db: Session = Depends(get_db)):
+    """Permanently deletes all notifications for the given email from the database."""
+    from models.user import Admin
+    admin = db.query(Admin).filter(Admin.email == email).first()
+    if admin:
+        # Admin: permanently delete all system (user_id=None) notifications
+        count = db.query(Notification).filter(
+            Notification.user_id.is_(None)
+        ).delete(synchronize_session=False)
+    else:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            # Customer: permanently delete personal + system notifications
+            count = db.query(Notification).filter(
+                (Notification.user_id == user.id) | (Notification.user_id.is_(None))
+            ).delete(synchronize_session=False)
+        else:
+            return {"status": "success", "message": "No notifications to clear"}
+
+    db.commit()
+    return {"status": "success", "message": f"Permanently deleted {count} notifications"}
+
+@router.put("/notifications/mark-all-read")
+def mark_all_notifications_read(email: str, db: Session = Depends(get_db)):
+    """Marks all notifications as read for the given email."""
+    from models.user import Admin
+    admin = db.query(Admin).filter(Admin.email == email).first()
+    if admin:
+        notifications = db.query(Notification).filter(
+            Notification.user_id.is_(None),
+            Notification.deleted == False,
+            Notification.is_read == False
+        ).all()
+    else:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            notifications = db.query(Notification).filter(
+                ((Notification.user_id == user.id) | (Notification.user_id.is_(None))),
+                Notification.deleted == False,
+                Notification.is_read == False
+            ).all()
+        else:
+            return {"status": "success", "message": "No unread notifications"}
+
+    for notif in notifications:
+        notif.is_read = True
+
+    db.commit()
+    return {"status": "success", "message": f"Marked {len(notifications)} notifications as read"}
 
 @router.put("/notifications/{notif_id}/read")
 def mark_as_read(notif_id: int, db: Session = Depends(get_db)):
     notif = db.query(Notification).filter(Notification.id == notif_id).first()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
-        
+
     notif.is_read = True
     db.commit()
     return {"status": "success", "message": "Notification marked as read"}
+
+@router.delete("/notifications/{notif_id}")
+def delete_single_notification(notif_id: int, db: Session = Depends(get_db)):
+    notif = db.query(Notification).filter(Notification.id == notif_id).first()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    db.delete(notif)
+    db.commit()
+    return {"status": "success", "message": "Notification permanently deleted"}
+

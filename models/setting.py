@@ -23,3 +23,21 @@ class QrCode(Base):
     is_active = Column("active", Boolean, default=True)
     updated_by_admin = Column(Integer, default=1)
     updated_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
+
+class DeliverySetting(Base):
+    __tablename__ = "delivery_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    standard_name = Column(String(100), default="Standard Delivery")
+    standard_days = Column(String(50), default="3-5 days")
+    standard_price = Column(Integer, default=0)
+    express_name = Column(String(100), default="Express Delivery")
+    express_days = Column(String(50), default="1-2 days")
+    express_price = Column(Integer, default=79)
+
+class StoreSetting(Base):
+    __tablename__ = "store_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    low_stock_threshold = Column(Integer, default=5)
+

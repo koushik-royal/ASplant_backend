@@ -3,8 +3,8 @@ import shutil
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from database.connection import get_db
-from models.setting import PaymentSetting, QrCode
-from schemas.setting import PaymentSettingResponse, PaymentSettingUpdate, QrCodeResponse
+from models.setting import PaymentSetting, QrCode, DeliverySetting, StoreSetting
+from schemas.setting import PaymentSettingResponse, PaymentSettingUpdate, QrCodeResponse, DeliverySettingResponse, DeliverySettingUpdate, StoreSettingResponse, StoreSettingUpdate
 from config import settings
 from typing import List, Optional
 
@@ -39,19 +39,90 @@ def update_payment_settings(payload: PaymentSettingUpdate, db: Session = Depends
 
 @router.get("/settings/delivery-charge")
 def get_delivery_charge(db: Session = Depends(get_db)):
-    setup = db.query(PaymentSetting).filter(PaymentSetting.id == 1).first()
-    charge = setup.express_delivery_charge if setup else 79
-    return {"standard_delivery_charge": 0, "express_delivery_charge": charge}
+    deliv = db.query(DeliverySetting).filter(DeliverySetting.id == 1).first()
+    if not deliv:
+        deliv = DeliverySetting(id=1, standard_name="Standard Delivery", standard_days="3-5 days", standard_price=0, express_name="Express Delivery", express_days="1-2 days", express_price=79)
+        db.add(deliv)
+        db.commit()
+        db.refresh(deliv)
+    return {
+        "standard_delivery_charge": deliv.standard_price,
+        "express_delivery_charge": deliv.express_price,
+        "standard_delivery_name": deliv.standard_name,
+        "standard_delivery_days": deliv.standard_days,
+        "express_delivery_name": deliv.express_name,
+        "express_delivery_days": deliv.express_days
+    }
 
 @router.put("/settings/delivery-charge")
 def update_delivery_charge(express_charge: int, db: Session = Depends(get_db)):
+    deliv = db.query(DeliverySetting).filter(DeliverySetting.id == 1).first()
+    if not deliv:
+        deliv = DeliverySetting(id=1)
+        db.add(deliv)
+    deliv.express_price = express_charge
     setup = db.query(PaymentSetting).filter(PaymentSetting.id == 1).first()
-    if not setup:
-        setup = PaymentSetting(id=1)
-        db.add(setup)
-    setup.express_delivery_charge = express_charge
+    if setup:
+        setup.express_delivery_charge = express_charge
     db.commit()
-    return {"status": "success", "standard_delivery_charge": 0, "express_delivery_charge": express_charge}
+    return {
+        "status": "success",
+        "standard_delivery_charge": deliv.standard_price,
+        "express_delivery_charge": deliv.express_price,
+        "standard_delivery_name": deliv.standard_name,
+        "standard_delivery_days": deliv.standard_days,
+        "express_delivery_name": deliv.express_name,
+        "express_delivery_days": deliv.express_days
+    }
+
+@router.get("/settings/delivery", response_model=DeliverySettingResponse)
+def get_delivery_settings_full(db: Session = Depends(get_db)):
+    deliv = db.query(DeliverySetting).filter(DeliverySetting.id == 1).first()
+    if not deliv:
+        deliv = DeliverySetting(id=1, standard_name="Standard Delivery", standard_days="3-5 days", standard_price=0, express_name="Express Delivery", express_days="1-2 days", express_price=79)
+        db.add(deliv)
+        db.commit()
+        db.refresh(deliv)
+    return deliv
+
+@router.put("/settings/delivery", response_model=DeliverySettingResponse)
+def update_delivery_settings_full(payload: DeliverySettingUpdate, db: Session = Depends(get_db)):
+    deliv = db.query(DeliverySetting).filter(DeliverySetting.id == 1).first()
+    if not deliv:
+        deliv = DeliverySetting(id=1)
+        db.add(deliv)
+    for key, value in payload.dict(exclude_unset=True).items():
+        setattr(deliv, key, value)
+    if payload.express_price is not None:
+        setup = db.query(PaymentSetting).filter(PaymentSetting.id == 1).first()
+        if setup:
+            setup.express_delivery_charge = payload.express_price
+    db.commit()
+    db.refresh(deliv)
+    return deliv
+
+@router.get("/settings/store", response_model=StoreSettingResponse)
+def get_store_settings(db: Session = Depends(get_db)):
+    store = db.query(StoreSetting).filter(StoreSetting.id == 1).first()
+    if not store:
+        store = StoreSetting(id=1, low_stock_threshold=5)
+        db.add(store)
+        db.commit()
+        db.refresh(store)
+    return store
+
+@router.put("/settings/store", response_model=StoreSettingResponse)
+def update_store_settings(payload: StoreSettingUpdate, db: Session = Depends(get_db)):
+    store = db.query(StoreSetting).filter(StoreSetting.id == 1).first()
+    if not store:
+        store = StoreSetting(id=1)
+        db.add(store)
+    for key, value in payload.dict(exclude_unset=True).items():
+        setattr(store, key, value)
+    db.commit()
+    db.refresh(store)
+    return store
+
 
 
 # --- UPI QR CODES ---

@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, model_validator
 from typing import List, Optional
 
@@ -16,7 +17,11 @@ class ProductBase(BaseModel):
     benefits: Optional[str] = None
     watering: Optional[str] = None
     sunlight: Optional[str] = None
+    temperature: Optional[str] = None
+    humidity: Optional[str] = None
     pot_size: Optional[str] = None
+    stock: Optional[int] = None
+    images: Optional[List[str]] = []
     is_active: Optional[bool] = True
     status: Optional[str] = "active"
     stock_quantity: Optional[int] = 25
@@ -40,6 +45,8 @@ class ProductUpdate(BaseModel):
     benefits: Optional[str] = None
     watering: Optional[str] = None
     sunlight: Optional[str] = None
+    temperature: Optional[str] = None
+    humidity: Optional[str] = None
     pot_size: Optional[str] = None
     id: Optional[int] = None
     is_active: Optional[bool] = None
@@ -59,6 +66,8 @@ class ProductResponse(ProductBase):
     reviews_count: int
     image_url: Optional[str] = ""
     imagePaths: List[str] = [] # Flat list of image URLs for Java Plant compatibility
+    stock: int = 25
+    images: List[str] = []
 
     class Config:
         from_attributes = True
@@ -88,10 +97,13 @@ class ProductResponse(ProductBase):
                 "benefits": data.benefits,
                 "watering": data.watering,
                 "sunlight": data.sunlight,
+                "temperature": data.temperature,
+                "humidity": data.humidity,
                 "pot_size": data.pot_size,
                 "is_active": data.is_active,
                 "status": getattr(data, 'status', 'active'),
                 "stock_quantity": data.stock_quantity,
+                "stock": getattr(data, 'stock_quantity', 25),
                 "height": data.height,
                 "weight": data.weight,
                 "is_featured": data.is_featured,
@@ -101,7 +113,8 @@ class ProductResponse(ProductBase):
                 "rating": data.rating,
                 "reviews_count": data.reviews_count,
                 "image_url": image_url_val,
-                "imagePaths": images_list
+                "imagePaths": images_list,
+                "images": images_list
             }
             return prod_dict
         else:
@@ -109,6 +122,10 @@ class ProductResponse(ProductBase):
                 data["imagePaths"] = [data["image_url"]]
             if data.get("imagePaths"):
                 data["imagePaths"] = list(dict.fromkeys([p for p in data["imagePaths"] if p]))
+            
+            data["images"] = data.get("imagePaths", [])
+            if "stock_quantity" in data and "stock" not in data:
+                data["stock"] = data["stock_quantity"]
         return data
 
 class CategoryCreate(BaseModel):

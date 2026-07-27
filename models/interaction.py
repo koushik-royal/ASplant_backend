@@ -44,4 +44,5 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     type = Column(String(50), nullable=False) # "order", "stock", "payout", "system"
     is_read = Column(Boolean, default=False)
+    deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))

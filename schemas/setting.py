@@ -38,3 +38,34 @@ class QrCodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class DeliverySettingUpdate(BaseModel):
+    standard_name: Optional[str] = None
+    standard_days: Optional[str] = None
+    standard_price: Optional[int] = None
+    express_name: Optional[str] = None
+    express_days: Optional[str] = None
+    express_price: Optional[int] = None
+
+class DeliverySettingResponse(BaseModel):
+    id: int
+    standard_name: str
+    standard_days: str
+    standard_price: int
+    express_name: str
+    express_days: str
+    express_price: int
+
+    class Config:
+        from_attributes = True
+
+class StoreSettingUpdate(BaseModel):
+    low_stock_threshold: Optional[int] = None
+
+class StoreSettingResponse(BaseModel):
+    id: int
+    low_stock_threshold: int
+
+    class Config:
+        from_attributes = True
+

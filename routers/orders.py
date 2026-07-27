@@ -8,6 +8,7 @@ from models.order import Order, OrderItem, DeliveryTracking, DeliveryProof, Paym
 from models.interaction import Notification, Rating
 from models.user import User
 from models.product import Product
+from models.setting import StoreSetting
 from schemas.order import OrderCreate, OrderResponse, OrderUpdateStatus
 from config import settings
 from typing import List, Optional
@@ -20,7 +21,13 @@ router = APIRouter()
 # --- ASYNC BROADCAST HELPER ---
 async def broadcast_admin_notification(message: dict):
     from routers.notifications import manager
+    from services.fcm import send_push_notification_to_all_admins
     await manager.broadcast(message)
+    # Also trigger FCM push notification to all admins
+    title = message.get("title", "Plantora Admin")
+    body = message.get("message", "")
+    notif_type = message.get("type", "system")
+    send_push_notification_to_all_admins(title, body, notif_type)
 
 @router.post("/orders", response_model=OrderResponse)
 def place_order(email: str, payload: OrderCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -89,6 +96,8 @@ def place_order(email: str, payload: OrderCreate, background_tasks: BackgroundTa
     
     # Create order items and decrement stock
     calculated_subtotal = 0
+    store_setting = db.query(StoreSetting).filter(StoreSetting.id == 1).first()
+    low_stock_threshold = store_setting.low_stock_threshold if store_setting else 5
     
     for item in payload.items:
         prod = db.query(Product).filter(Product.id == item.product_id).first()
@@ -100,10 +109,11 @@ def place_order(email: str, payload: OrderCreate, background_tasks: BackgroundTa
             raise HTTPException(status_code=400, detail=f"Insufficient stock for {prod.name}")
         
         # Decrement stock
+        old_stock = prod.stock_quantity
         prod.stock_quantity -= item.quantity
         
-        # Low stock check
-        if prod.stock_quantity <= 5:
+        # Low stock check (trigger ONLY when crossing the threshold downwards)
+        if old_stock > low_stock_threshold and prod.stock_quantity <= low_stock_threshold:
             low_stock_notif = Notification(
                 user_id=None,
                 title="Low Stock Alert",
@@ -269,6 +279,12 @@ def update_order_status(order_id: str, payload: OrderUpdateStatus, background_ta
             is_read=False,
         )
         db.add(notif)
+        
+        # Trigger FCM push notification to the customer
+        from services.fcm import send_push_notification
+        user = db.query(User).filter(User.id == order.user_id).first()
+        if user:
+            send_push_notification(user.email, title, message, "order", "customer")
 
     db.commit()
     

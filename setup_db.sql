@@ -82,6 +82,8 @@ CREATE TABLE IF NOT EXISTS plants (
     benefits VARCHAR(255),
     watering VARCHAR(100),
     sunlight VARCHAR(100),
+    temperature VARCHAR(100),
+    humidity VARCHAR(100),
     pot_size VARCHAR(100),
     is_active BOOLEAN DEFAULT TRUE,
     status VARCHAR(20) DEFAULT 'active',
