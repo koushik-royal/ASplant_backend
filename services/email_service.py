@@ -50,7 +50,7 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    # ── Send ─────────────────────────────────────────────────────────────────
+    # ── Send via raw SMTP ───────────────────────────────────────────────────
     try:
         print(f"[EMAIL] Connecting to {settings.SMTP_SERVER}:{settings.SMTP_PORT} ...")
         try:
