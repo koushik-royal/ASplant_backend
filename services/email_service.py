@@ -51,6 +51,33 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    # ── Resend HTTPS API Check ────────────────────────────────────────────────
+    resend_key = os.getenv("RESEND_API_KEY", "").strip()
+    if resend_key:
+        try:
+            import requests
+            print(f"[EMAIL] Sending to {to_email} via Resend HTTPS API...")
+            headers = {
+                "Authorization": f"Bearer {resend_key}",
+                "Content-Type": "application/json"
+            }
+            from_email = os.getenv("RESEND_FROM_EMAIL", "AS Plants <onboarding@resend.dev>")
+            payload = {
+                "from": from_email,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body
+            }
+            res = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=10)
+            if res.status_code in [200, 201]:
+                print(f"[EMAIL] ✅ Resend HTTPS API Success! Delivered email to {to_email}")
+                logger.info(f"Email sent successfully via Resend HTTPS API to {to_email}")
+                return {"success": True, "message": "Email sent successfully via Resend API"}
+            else:
+                print(f"[EMAIL] ⚠️ Resend API Error ({res.status_code}): {res.text}")
+        except Exception as res_err:
+            print(f"[EMAIL] ⚠️ Resend API Exception: {res_err}")
+
     # ── Brevo HTTPS API Check (Bypasses cloud SMTP port restrictions) ──────────
     brevo_key = os.getenv("BREVO_API_KEY", os.getenv("BREVO_KEY", "")).strip()
     if brevo_key:
