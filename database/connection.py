@@ -3,11 +3,20 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from config import settings
 
 db_url = settings.DATABASE_URL
+connect_args = {}
+
 if db_url.startswith("mysql://"):
     db_url = db_url.replace("mysql://", "mysql+pymysql://", 1)
 
+if "?" in db_url:
+    base_url, query_params = db_url.split("?", 1)
+    if "ssl-mode" in query_params or "ssl_mode" in query_params or "aiven" in db_url.lower():
+        db_url = base_url
+        connect_args["ssl"] = {}
+
 engine = create_engine(
     db_url,
+    connect_args=connect_args,
     pool_pre_ping=True,
     pool_recycle=3600
 )
