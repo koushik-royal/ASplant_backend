@@ -3,16 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
-# Create folders if not exist
-for folder in ["uploads", "uploads/profiles", "uploads/products", "uploads/payments", "uploads/qr_codes", "uploads/proofs", "uploads/signatures"]:
-    os.makedirs(folder, exist_ok=True)
+# Create folders if not exist (safely handled for serverless environments)
+try:
+    for folder in ["uploads", "uploads/profiles", "uploads/products", "uploads/payments", "uploads/qr_codes", "uploads/proofs", "uploads/signatures"]:
+        os.makedirs(folder, exist_ok=True)
 
-# Create a mock file for QR codes if not exists so it loads correctly
-mock_qr = "uploads/qr_codes/qr_mock.png"
-if not os.path.exists(mock_qr):
-    with open(mock_qr, "wb") as f:
-        # Just write 1 empty byte as mock image
-        f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+    # Create a mock file for QR codes if not exists so it loads correctly
+    mock_qr = "uploads/qr_codes/qr_mock.png"
+    if not os.path.exists(mock_qr):
+        with open(mock_qr, "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+except Exception as _folder_err:
+    print(f"[SERVERLESS] Folder creation warning: {_folder_err}")
 
 from database.connection import engine, Base
 # Import routers
@@ -147,13 +149,19 @@ def run_migrations():
         log_content.append(f"\nMigration error: {e}")
         print(f"[MIGRATION] Migration error: {e}")
         
-    with open("db_schema_log.txt", "w", encoding="utf-8") as lf:
-        lf.write("\n".join(log_content))
+    try:
+        with open("db_schema_log.txt", "w", encoding="utf-8") as lf:
+            lf.write("\n".join(log_content))
+    except Exception as _log_err:
+        print(f"[SERVERLESS] Could not write schema log file: {_log_err}")
 
 run_migrations()
 
 # Automatically create tables (Fallback if setup_db.sql not executed)
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as _table_err:
+    print(f"[SERVERLESS] Table creation check warning: {_table_err}")
 
 app = FastAPI(
     title="AS Plants Backend API",
@@ -171,12 +179,16 @@ app.add_middleware(
 )
 
 # Mount media folders as static directories so the Android client can fetch them
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+if os.path.exists("uploads"):
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Mount static folder for seed plant images and mock QR codes
-import os as _os
-_os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+try:
+    os.makedirs("static", exist_ok=True)
+except Exception:
+    pass
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include Routers
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
