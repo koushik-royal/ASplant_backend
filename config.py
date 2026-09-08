@@ -12,7 +12,10 @@ else:
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AS Plants API"
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "mysql+pymysql://root:@localhost/plantora")
+    _db_url_env = os.getenv("DATABASE_URL", "mysql+pymysql://root:@localhost/plantora")
+    if _db_url_env.startswith("mysql://"):
+        _db_url_env = _db_url_env.replace("mysql://", "mysql+pymysql://", 1)
+    DATABASE_URL: str = _db_url_env
     SECRET_KEY: str = os.getenv("SECRET_KEY", "plantora_super_secret_key_12345")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30 # 30 days session
