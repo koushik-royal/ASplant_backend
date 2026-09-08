@@ -43,17 +43,20 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Ensure directories exist
-for folder in [
-    settings.UPLOAD_DIR,
-    settings.PROFILE_UPLOAD_DIR,
-    settings.PROFILE_IMAGES_DIR,
-    settings.PRODUCT_UPLOAD_DIR,
-    settings.PAYMENT_UPLOAD_DIR,
-    settings.QR_UPLOAD_DIR,
-    settings.PROOF_UPLOAD_DIR,
-    settings.SIGNATURE_UPLOAD_DIR
-]:
-    os.makedirs(folder, exist_ok=True)
+# Ensure directories exist (safely handled for serverless read-only filesystems)
+try:
+    for folder in [
+        settings.UPLOAD_DIR,
+        settings.PROFILE_UPLOAD_DIR,
+        settings.PROFILE_IMAGES_DIR,
+        settings.PRODUCT_UPLOAD_DIR,
+        settings.PAYMENT_UPLOAD_DIR,
+        settings.QR_UPLOAD_DIR,
+        settings.PROOF_UPLOAD_DIR,
+        settings.SIGNATURE_UPLOAD_DIR
+    ]:
+        os.makedirs(folder, exist_ok=True)
+except Exception as _folder_err:
+    pass
 
 # Hot-reload trigger: SMTP credentials updated, triggering reload. Force reload 1.
