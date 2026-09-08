@@ -54,7 +54,7 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     try:
         print(f"[EMAIL] Connecting to {settings.SMTP_SERVER}:{settings.SMTP_PORT} ...")
         try:
-            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=15) as server:
+            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=10) as server:
                 server.ehlo()
                 print("[EMAIL] EHLO OK")
                 server.starttls()
@@ -69,19 +69,23 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
                 logger.info(f"Email sent successfully to {to_email}")
                 return {"success": True, "message": "Email sent successfully"}
         except (OSError, smtplib.SMTPException) as primary_err:
-            print(f"[EMAIL] Port {settings.SMTP_PORT} failed ({primary_err}). Retrying via SSL port 465...")
-            with smtplib.SMTP_SSL(settings.SMTP_SERVER, 465, timeout=15) as ssl_server:
-                ssl_server.ehlo()
-                ssl_server.login(settings.SMTP_SENDER, passwd)
-                ssl_server.sendmail(settings.SMTP_SENDER, [to_email], msg.as_string())
-                print(f"[EMAIL] ✅ Email sent successfully via SSL port 465 to {to_email}")
-                logger.info(f"Email sent successfully via SSL port 465 to {to_email}")
-                return {"success": True, "message": "Email sent successfully via SSL port 465"}
+            print(f"[EMAIL] Port {settings.SMTP_PORT} unreachable. Retrying via SSL port 465...")
+            try:
+                with smtplib.SMTP_SSL(settings.SMTP_SERVER, 465, timeout=10) as ssl_server:
+                    ssl_server.ehlo()
+                    ssl_server.login(settings.SMTP_SENDER, passwd)
+                    ssl_server.sendmail(settings.SMTP_SENDER, [to_email], msg.as_string())
+                    print(f"[EMAIL] ✅ Email sent successfully via SSL port 465 to {to_email}")
+                    logger.info(f"Email sent successfully via SSL port 465 to {to_email}")
+                    return {"success": True, "message": "Email sent successfully via SSL port 465"}
+            except OSError as net_err:
+                msg = f"Cloud network blocked outbound SMTP ports 587 & 465 ({net_err})."
+                print(f"[EMAIL] ℹ️ {msg}")
+                return {"success": False, "message": msg}
 
     except Exception as e:
         err_msg = f"Failed to send email: {type(e).__name__}: {e}"
         print(f"[EMAIL] UNEXPECTED ERROR: {err_msg}")
-        print(traceback.format_exc())
         logger.error(err_msg)
         return {"success": False, "message": err_msg}
 
