@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -208,6 +208,10 @@ app.include_router(customer.router, prefix="/api", tags=["Customer Management"])
 
 # Map compatibility endpoint directly to root
 app.include_router(settings.router, tags=["Android Compatibility"])
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 from pydantic import BaseModel, EmailStr
 from config import settings
