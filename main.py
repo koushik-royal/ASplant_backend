@@ -155,13 +155,18 @@ def run_migrations():
     except Exception as _log_err:
         print(f"[SERVERLESS] Could not write schema log file: {_log_err}")
 
-run_migrations()
+if not os.getenv("VERCEL"):
+    try:
+        run_migrations()
+    except Exception as _mig_err:
+        print(f"[MIGRATION] Migration skipped: {_mig_err}")
 
 # Automatically create tables (Fallback if setup_db.sql not executed)
-try:
-    Base.metadata.create_all(bind=engine)
-except Exception as _table_err:
-    print(f"[SERVERLESS] Table creation check warning: {_table_err}")
+if not os.getenv("VERCEL"):
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as _table_err:
+        print(f"[SERVERLESS] Table creation check warning: {_table_err}")
 
 app = FastAPI(
     title="AS Plants Backend API",
