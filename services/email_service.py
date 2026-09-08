@@ -53,38 +53,30 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     # ── Send ─────────────────────────────────────────────────────────────────
     try:
         print(f"[EMAIL] Connecting to {settings.SMTP_SERVER}:{settings.SMTP_PORT} ...")
-        with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            print("[EMAIL] EHLO OK")
-
-            server.starttls()
-            server.ehlo()
-            print("[EMAIL] STARTTLS OK")
-
-            print(f"[EMAIL] Authenticating as {settings.SMTP_SENDER} ...")
-            try:
+        try:
+            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=15) as server:
+                server.ehlo()
+                print("[EMAIL] EHLO OK")
+                server.starttls()
+                server.ehlo()
+                print("[EMAIL] STARTTLS OK")
+                print(f"[EMAIL] Authenticating as {settings.SMTP_SENDER} ...")
                 server.login(settings.SMTP_SENDER, passwd)
                 print("[EMAIL] LOGIN OK")
-            except smtplib.SMTPAuthenticationError as auth_err:
-                raw = auth_err.smtp_error
-                detail = raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else str(auth_err)
-                err_msg = f"SMTP Auth Failed (code {auth_err.smtp_code}): {detail}"
-                print(f"[EMAIL] AUTH ERROR: {err_msg}")
-                print("[EMAIL] FIX: Re-generate Gmail App Password at https://myaccount.google.com/apppasswords")
-                logger.error(err_msg)
-                return {"success": False, "message": err_msg}
-
-            print(f"[EMAIL] Sending to {to_email} ...")
-            server.sendmail(settings.SMTP_SENDER, [to_email], msg.as_string())
-            print(f"[EMAIL] ✅ Email sent successfully to {to_email}")
-            logger.info(f"Email sent successfully to {to_email}")
-            return {"success": True, "message": "Email sent successfully"}
-
-    except smtplib.SMTPConnectError as conn_err:
-        err_msg = f"SMTP Connection Failed: {conn_err}"
-        print(f"[EMAIL] CONNECTION ERROR: {err_msg}")
-        logger.error(err_msg)
-        return {"success": False, "message": err_msg}
+                print(f"[EMAIL] Sending to {to_email} ...")
+                server.sendmail(settings.SMTP_SENDER, [to_email], msg.as_string())
+                print(f"[EMAIL] ✅ Email sent successfully to {to_email}")
+                logger.info(f"Email sent successfully to {to_email}")
+                return {"success": True, "message": "Email sent successfully"}
+        except (OSError, smtplib.SMTPException) as primary_err:
+            print(f"[EMAIL] Port {settings.SMTP_PORT} failed ({primary_err}). Retrying via SSL port 465...")
+            with smtplib.SMTP_SSL(settings.SMTP_SERVER, 465, timeout=15) as ssl_server:
+                ssl_server.ehlo()
+                ssl_server.login(settings.SMTP_SENDER, passwd)
+                ssl_server.sendmail(settings.SMTP_SENDER, [to_email], msg.as_string())
+                print(f"[EMAIL] ✅ Email sent successfully via SSL port 465 to {to_email}")
+                logger.info(f"Email sent successfully via SSL port 465 to {to_email}")
+                return {"success": True, "message": "Email sent successfully via SSL port 465"}
 
     except Exception as e:
         err_msg = f"Failed to send email: {type(e).__name__}: {e}"

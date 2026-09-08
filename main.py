@@ -112,6 +112,9 @@ def run_migrations():
                 if "country" not in cols:
                     conn.execute(text("ALTER TABLE customers ADD COLUMN country VARCHAR(100)"))
                     log_content.append("\ncustomers: added column country")
+                if "fcm_token" not in cols:
+                    conn.execute(text("ALTER TABLE customers ADD COLUMN fcm_token VARCHAR(255)"))
+                    log_content.append("\ncustomers: added column fcm_token")
             if "orders" in current_tables:
                 col_res = conn.execute(text("SHOW COLUMNS FROM orders")).fetchall()
                 cols = [row[0] for row in col_res]
