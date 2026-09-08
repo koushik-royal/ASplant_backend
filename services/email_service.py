@@ -50,6 +50,35 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    # ── Brevo HTTPS API Check (Bypasses cloud SMTP port restrictions) ──────────
+    brevo_key = os.getenv("BREVO_API_KEY", os.getenv("BREVO_KEY", "")).strip()
+    if brevo_key:
+        try:
+            import requests
+            print(f"[EMAIL] Sending to {to_email} via Brevo HTTPS API...")
+            headers = {
+                "api-key": brevo_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            sender_email = settings.SMTP_SENDER or "plantora158@gmail.com"
+            sender_name = getattr(settings, "SMTP_DISPLAY_NAME", "") or "AS Plants"
+            payload = {
+                "sender": {"name": sender_name, "email": sender_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_body
+            }
+            res = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=10)
+            if res.status_code in [200, 201]:
+                print(f"[EMAIL] ✅ Brevo HTTPS API Success! Delivered email to {to_email}")
+                logger.info(f"Email sent successfully via Brevo HTTPS API to {to_email}")
+                return {"success": True, "message": "Email sent successfully via Brevo API"}
+            else:
+                print(f"[EMAIL] ⚠️ Brevo API Error ({res.status_code}): {res.text}")
+        except Exception as brevo_err:
+            print(f"[EMAIL] ⚠️ Brevo API Exception: {brevo_err}")
+
     # ── Send via raw SMTP ───────────────────────────────────────────────────
     try:
         print(f"[EMAIL] Connecting to {settings.SMTP_SERVER}:{settings.SMTP_PORT} ...")
