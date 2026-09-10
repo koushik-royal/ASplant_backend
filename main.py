@@ -349,80 +349,23 @@ def smtp_status():
         "auth_success": auth_success
     }
 
-# ── STARTUP: SMTP STATUS CHECK ─────────────────────────────────────────────────
+# ── STARTUP: EMAIL SERVICE STATUS CHECK (BREVO API) ────────────────────────────
 @app.on_event("startup")
-async def check_smtp_on_startup():
+async def check_email_service_on_startup():
     """
-    Runs automatically every time the server starts.
-    Prints a clear SMTP working / not-working banner to the terminal.
-    Sends a test email on startup to verify delivery.
+    Runs automatically on startup.
+    Verifies Brevo API configuration from environment without making network calls.
     """
-    import smtplib as _smtp
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-
-    passwd = (settings.SMTP_PASSWORD or "").replace(" ", "")
-    username = settings.SMTP_SENDER or ""
+    brevo_api_key = os.getenv("BREVO_API_KEY", "")
+    sender = settings.SMTP_SENDER or ""
 
     print("\n" + "=" * 60)
-    print("  AS PLANTS BACKEND  -  SMTP STARTUP CHECK")
+    print("  AS PLANTS BACKEND  -  EMAIL SERVICE STATUS")
     print("=" * 60)
-    print(f"  Host     : {settings.SMTP_SERVER}")
-    print(f"  Port     : {settings.SMTP_PORT}")
-    print(f"  Username : {username}")
-    print(f"  Password : {'(not set)' if not passwd else passwd[:4] + '...' + passwd[-4:] + f'  (len={len(passwd)})'}")
-    print("-" * 60)
-
-    if not username or not passwd:
-        print("  [FAIL] SMTP NOT CONFIGURED — set SMTP_USERNAME and SMTP_PASSWORD in env.txt")
-        print("=" * 60 + "\n")
-        return
-
-    try:
-        server = _smtp.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=15)
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(username, passwd)
-        
-        # Send test email to the admin/username itself
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "AS Plants – Backend Startup SMTP Test"
-        msg["From"] = f"{settings.SMTP_DISPLAY_NAME} <{username}>"
-        msg["To"] = username
-        msg.attach(MIMEText(
-            "<h2>AS Plants Backend Started Successfully</h2>"
-            "<p>Your SMTP configuration is working perfectly.</p>"
-            "<p>OTP emails can now be delivered to users.</p>",
-            "html", "utf-8"
-        ))
-        
-        server.sendmail(username, [username], msg.as_string())
-        server.quit()
-        
-        print(f"  [ OK ] SMTP AUTHENTICATION SUCCESSFUL")
-        print(f"  [ OK ] Test email sent to {username}")
-        print("      OTP emails can now be sent to users.")
-        print("=" * 60 + "\n")
-
-    except _smtp.SMTPAuthenticationError as e:
-        raw = e.smtp_error
-        detail = raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else str(e)
-        print(f"  [FAIL] SMTP AUTH FAILED  (code {e.smtp_code})")
-        print(f"      Error : {detail.strip()}")
-        print("      Fix   : Go to https://myaccount.google.com/apppasswords")
-        print("               Create new App Password and update SMTP_PASSWORD in env.txt")
-        print("               Then restart the backend.")
-        print("=" * 60 + "\n")
-
-    except _smtp.SMTPConnectError as e:
-        print(f"  [FAIL] SMTP CONNECTION FAILED: {e}")
-        print("      Check your internet / firewall settings.")
-        print("=" * 60 + "\n")
-
-    except Exception as e:
-        print(f"  [FAIL] SMTP ERROR: {type(e).__name__}: {e}")
-        print("=" * 60 + "\n")
+    print("  Provider  : Brevo HTTP API (v3)")
+    print(f"  Sender    : {sender if sender else '(not set - configure SMTP_USERNAME)'}")
+    print(f"  API Key   : {'CONFIGURED' if brevo_api_key else 'NOT SET (set BREVO_API_KEY in Render environment)'}")
+    print("=" * 60 + "\n")
 
 
 @app.get("/")
