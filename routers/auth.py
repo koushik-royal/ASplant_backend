@@ -373,17 +373,21 @@ def send_reset_otp(payload: SendResetOtpRequest, db: Session = Depends(get_db)):
 
     # Generate 6-digit OTP
     otp = f"{random.randint(100000, 999999)}"
-    print(f"[RESET-OTP] Generated OTP for {email}")
+    print(f"[RESET-OTP] Generated OTP for {email}", flush=True)
 
-    # Send OTP via real Gmail SMTP first
+    # Send OTP via Brevo API
     from services.email_service import send_otp_email
     result = send_otp_email(email, otp)
 
-    if not result["success"]:
-        print(f"[RESET-OTP] ⚠️ Email delivery failed for {email} ({result['message']}).")
-        print(f"[RESET-OTP FALLBACK] Cloud SMTP restricted. Generated OTP for {email} is: {otp}")
-    else:
-        print(f"[RESET-OTP] ✅ OTP email sent to {email}")
+    if not result.get("success"):
+        err_message = result.get("message", "Failed to deliver reset OTP email")
+        print(f"[RESET-OTP] [FAIL] Email delivery failed for {email}: {err_message}", flush=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Email delivery failed: {err_message}"
+        )
+
+    print(f"[RESET-OTP] [OK] OTP email sent to {email}", flush=True)
 
     # Remove any existing OTPs for this email
     db.query(OTPVerification).filter(OTPVerification.email == email).delete()
@@ -399,7 +403,7 @@ def send_reset_otp(payload: SendResetOtpRequest, db: Session = Depends(get_db)):
     )
     db.add(db_otp)
     db.commit()
-    print(f"[RESET-OTP] Saved to DB, expires: {expires_at} UTC")
+    print(f"[RESET-OTP] Saved to DB, expires: {expires_at} UTC", flush=True)
 
     return {
         "success": True,

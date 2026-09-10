@@ -48,16 +48,20 @@ def send_otp(payload: SendOtpRequest, db: Session = Depends(get_db)):
     # Generate 6-digit OTP
     otp = f"{random.randint(100000, 999999)}"
 
-    print(f"\n[OTP] Sending OTP to: {email}")
+    print(f"\n[OTP] Sending OTP to: {email}", flush=True)
 
     # --- Send email FIRST; only save to DB if delivery succeeds ---
     result = send_otp_email(email, otp)
 
-    if not result["success"]:
-        print(f"[OTP] ⚠️ Email delivery failed for {email} ({result['message']}).")
-        print(f"[OTP FALLBACK] Cloud SMTP restricted. Generated OTP for {email} is: {otp}")
-    else:
-        print(f"[OTP] ✅ OTP email delivered to {email}")
+    if not result.get("success"):
+        err_message = result.get("message", "Failed to deliver OTP email")
+        print(f"[OTP] [FAIL] Email delivery failed for {email}: {err_message}", flush=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Email delivery failed: {err_message}"
+        )
+
+    print(f"[OTP] [OK] OTP email delivered to {email}", flush=True)
 
     # Email delivered — clean up old OTPs for this email (supports Resend)
     db.query(OTPVerification).filter(OTPVerification.email == email).delete()
@@ -74,7 +78,7 @@ def send_otp(payload: SendOtpRequest, db: Session = Depends(get_db)):
     db.add(db_otp)
     db.commit()
 
-    print(f"[OTP] Saved to DB with expiry: {expires_at} UTC")
+    print(f"[OTP] Saved to DB with expiry: {expires_at} UTC", flush=True)
 
     return {
         "success": True,

@@ -13,11 +13,11 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     Send an HTML email using Brevo API.
     """
 
-    print("\n" + "=" * 55)
-    print("  AS PLANTS EMAIL SEND ATTEMPT")
-    print("=" * 55)
-    print(f"  To      : {to_email}")
-    print(f"  Subject : {subject}")
+    print("\n" + "=" * 55, flush=True)
+    print("  AS PLANTS EMAIL SEND ATTEMPT", flush=True)
+    print("=" * 55, flush=True)
+    print(f"  To      : {to_email}", flush=True)
+    print(f"  Subject : {subject}", flush=True)
 
     # Brevo API key from Render Environment Variables
     api_key = os.getenv("BREVO_API_KEY", "")
@@ -25,14 +25,14 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     # We use SMTP_USERNAME as the verified Brevo sender email
     sender_email = settings.SMTP_SENDER
 
-    print(f"  Sender  : {sender_email}")
-    print(f"  Brevo API Key: {'SET' if api_key else 'NOT SET'}")
-    print("=" * 55)
+    print(f"  Sender  : {sender_email}", flush=True)
+    print(f"  Brevo API Key: {'SET' if api_key else 'NOT SET'}", flush=True)
+    print("=" * 55, flush=True)
 
     # Check Brevo API key
     if not api_key:
         msg = "BREVO_API_KEY is not set in Render Environment."
-        print(f"[EMAIL] ERROR: {msg}")
+        print(f"[EMAIL] ERROR: {msg}", flush=True)
         return {
             "success": False,
             "message": msg
@@ -41,7 +41,7 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     # Check sender email
     if not sender_email:
         msg = "SMTP_USERNAME is not set. This is used as the Brevo sender email."
-        print(f"[EMAIL] ERROR: {msg}")
+        print(f"[EMAIL] ERROR: {msg}", flush=True)
         return {
             "success": False,
             "message": msg
@@ -69,7 +69,7 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
     }
 
     try:
-        print("[EMAIL] Sending email through Brevo API...")
+        print("[EMAIL] Sending email through Brevo API...", flush=True)
 
         response = requests.post(
             "https://api.brevo.com/v3/smtp/email",
@@ -78,10 +78,10 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
             timeout=20
         )
 
-        print(f"[EMAIL] Brevo response: {response.status_code}")
+        print(f"[EMAIL] Brevo response: {response.status_code}", flush=True)
 
         if response.ok:
-            print(f"[EMAIL] Email sent successfully to {to_email}")
+            print(f"[EMAIL] Email sent successfully to {to_email}", flush=True)
 
             logger.info(
                 f"Email sent successfully to {to_email}"
@@ -94,15 +94,23 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
 
         error_text = response.text
 
-        print(f"[EMAIL] Brevo error: {error_text}")
+        print(f"[EMAIL] Brevo error: {error_text}", flush=True)
 
         logger.error(
             f"Brevo API error ({response.status_code}): {error_text}"
         )
 
+        clean_msg = error_text
+        try:
+            err_json = response.json()
+            if isinstance(err_json, dict) and "message" in err_json:
+                clean_msg = err_json["message"]
+        except Exception:
+            pass
+
         return {
             "success": False,
-            "message": f"Brevo API error ({response.status_code}): {error_text}"
+            "message": f"Brevo API error ({response.status_code}): {clean_msg}"
         }
 
     except Exception as e:
@@ -111,8 +119,8 @@ def _send_email_base(to_email: str, subject: str, html_body: str) -> dict:
             f"{type(e).__name__}: {e}"
         )
 
-        print(f"[EMAIL] ERROR: {err_msg}")
-        print(traceback.format_exc())
+        print(f"[EMAIL] ERROR: {err_msg}", flush=True)
+        print(traceback.format_exc(), flush=True)
 
         logger.error(err_msg)
 
