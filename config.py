@@ -17,9 +17,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30 # 30 days session
     
-    # Server base URL — set this to your machine's LAN IP for real device testing
-    # e.g. export SERVER_BASE_URL=http://192.168.1.20:8000
-    SERVER_BASE_URL: str = os.getenv("SERVER_BASE_URL", "http://192.168.1.20:8000")
+    # Server base URL — uses SERVER_BASE_URL env, or RENDER_EXTERNAL_URL on Render, falling back to production URL
+    SERVER_BASE_URL: str = os.getenv("SERVER_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "https://asplant-backend.onrender.com"
     
     # Upload folder paths
     UPLOAD_DIR: str = "uploads"

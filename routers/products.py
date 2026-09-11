@@ -7,7 +7,7 @@ from models.product import Product, Category, ProductImage
 from models.order import Order, OrderItem
 from models.user import User
 from models.interaction import Cart, Wishlist
-from schemas.product import ProductCreate, ProductUpdate, ProductResponse, CategoryCreate, CategoryResponse
+from schemas.product import ProductCreate, ProductUpdate, ProductResponse, CategoryCreate, CategoryResponse, to_full_url
 from config import settings
 from typing import List, Optional, Union
 
@@ -36,7 +36,8 @@ def create_category(
         filepath = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        image_url = f"{settings.SERVER_BASE_URL}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
+        base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
+        image_url = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
 
     category = Category(name=name, image_url=image_url)
     db.add(category)
@@ -137,7 +138,8 @@ def create_product(
     if payload.image_paths:
         for idx, path in enumerate(payload.image_paths):
             if path and path.strip():
-                prod_image = ProductImage(product_id=product.id, image_path=path.strip(), display_order=idx)
+                full_p = to_full_url(path.strip())
+                prod_image = ProductImage(product_id=product.id, image_path=full_p, display_order=idx)
                 db.add(prod_image)
         db.commit()
         db.refresh(product)
@@ -156,6 +158,7 @@ def upload_images_temp(
     import time
     uploaded_urls = []
     os.makedirs(settings.PRODUCT_UPLOAD_DIR, exist_ok=True)
+    base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
     
     for index, file in enumerate(files):
         file_ext = os.path.splitext(file.filename)[1]
@@ -165,7 +168,7 @@ def upload_images_temp(
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        url_path = f"{settings.SERVER_BASE_URL}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
+        url_path = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
         uploaded_urls.append(url_path)
         
     return {"status": "success", "urls": uploaded_urls}
@@ -192,6 +195,9 @@ def update_product(
                 update_data["category_id"] = 1
                 
     for key, value in update_data.items():
+        if key == "image_url" and (value is None or value == ""):
+            # Do not clear existing image_url if empty/unset
+            continue
         setattr(product, key, value)
         
     if "status" in update_data:
@@ -260,30 +266,47 @@ def upload_product_images(
         else:
             file_list = [files]
 
+    def extract_file_key(p: str) -> str:
+        if not p:
+            return ""
+        clean = p.strip().split("?")[0]
+        if "uploads/products/" in clean:
+            return clean.split("uploads/products/")[-1]
+        if "uploads/" in clean:
+            return clean.split("uploads/")[-1]
+        if "/" in clean:
+            return clean.split("/")[-1]
+        return clean
+
+    base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
+    existing_images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
+
     # Delete product images that are NOT in the kept list
     if kept_list:
-        to_delete = db.query(ProductImage).filter(
-            ProductImage.product_id == product_id,
-            ~ProductImage.image_path.in_(kept_list)
-        ).all()
-        for img in to_delete:
-            if "uploads/products/" in img.image_path:
-                filename = img.image_path.split("uploads/products/")[-1]
-                local_file_path = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
-                if os.path.exists(local_file_path):
-                    try:
-                        os.remove(local_file_path)
-                    except Exception as e:
-                        print(f"Error removing physical image file during update: {e}")
-        db.query(ProductImage).filter(
-            ProductImage.product_id == product_id,
-            ~ProductImage.image_path.in_(kept_list)
-        ).delete(synchronize_session=False)
+        kept_keys = {extract_file_key(p) for p in kept_list if extract_file_key(p)}
+        for img in existing_images:
+            img_key = extract_file_key(img.image_path)
+            # Match either exact path or file key (filename)
+            if img_key not in kept_keys and img.image_path not in kept_list:
+                if "uploads/products/" in img.image_path:
+                    filename = img.image_path.split("uploads/products/")[-1]
+                    local_file_path = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
+                    if os.path.exists(local_file_path):
+                        try:
+                            os.remove(local_file_path)
+                        except Exception as e:
+                            print(f"Error removing physical image file during update: {e}")
+                db.delete(img)
+            else:
+                # Update existing image URL to canonical full URL if needed
+                if "prod_" in img_key:
+                    img.image_path = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{img_key}"
+                else:
+                    img.image_path = to_full_url(img.image_path)
     else:
         # If files are uploaded and no kept images are specified, delete all old images
         if file_list:
-            to_delete = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
-            for img in to_delete:
+            for img in existing_images:
                 if "uploads/products/" in img.image_path:
                     filename = img.image_path.split("uploads/products/")[-1]
                     local_file_path = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
@@ -292,12 +315,11 @@ def upload_product_images(
                             os.remove(local_file_path)
                         except Exception as e:
                             print(f"Error removing physical image file during complete clear: {e}")
-            db.query(ProductImage).filter(ProductImage.product_id == product_id).delete()
+                db.delete(img)
         
-    uploaded_images = list(kept_list)
-    
     # Process newly uploaded files
     if file_list:
+        max_order = len(kept_list)
         for index, file in enumerate(file_list):
             file_ext = os.path.splitext(file.filename)[1]
             import time
@@ -307,16 +329,15 @@ def upload_product_images(
             with open(filepath, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
                 
-            url_path = f"{settings.SERVER_BASE_URL}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
+            url_path = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
             
-            prod_image = ProductImage(product_id=product_id, image_path=url_path)
+            prod_image = ProductImage(product_id=product_id, image_path=url_path, display_order=max_order + index)
             db.add(prod_image)
-            uploaded_images.append(url_path)
             
     db.flush()
     # Fetch all current images for the product
-    all_images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
-    all_paths = [img.image_path for img in all_images]
+    all_images = db.query(ProductImage).filter(ProductImage.product_id == product_id).order_by(ProductImage.display_order.asc(), ProductImage.id.asc()).all()
+    all_paths = [to_full_url(img.image_path) for img in all_images]
     
     if all_paths:
         product.image_url = all_paths[0]

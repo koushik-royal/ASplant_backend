@@ -36,6 +36,23 @@ class ProductCreate(ProductBase):
     image_url: Optional[str] = ""
     image_paths: Optional[List[str]] = []
 
+def to_full_url(path: Optional[str]) -> str:
+    if not path:
+        return ""
+    p = path.strip()
+    if not p or p.startswith("res:"):
+        return p
+    from config import settings
+    base = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
+    if ":8000" in p:
+        sub = p.split(":8000", 1)[1]
+        return f"{base}{sub}"
+    if p.startswith("http://") or p.startswith("https://"):
+        return p
+    if p.startswith("/"):
+        return f"{base}{p}"
+    return f"{base}/{p}"
+
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     category_id: Optional[int] = None
@@ -56,7 +73,7 @@ class ProductUpdate(BaseModel):
     weight: Optional[str] = None
     is_featured: Optional[bool] = None
     detailed_description: Optional[str] = None
-    image_url: Optional[str] = ""
+    image_url: Optional[str] = None
 
 class ProductResponse(ProductBase):
     id: int
@@ -77,17 +94,20 @@ class ProductResponse(ProductBase):
     def resolve_java_compat_fields(cls, data):
         if not isinstance(data, dict):
             # SQLAlchemy model conversion to dictionary for custom fields
-            image_url_val = getattr(data, 'image_url', '')
+            image_url_val = to_full_url(getattr(data, 'image_url', ''))
             images_list = []
             seen = set()
             if hasattr(data, 'images') and data.images:
                 sorted_images = sorted(data.images, key=lambda x: getattr(x, 'display_order', 0) if getattr(x, 'display_order', 0) is not None else 0)
                 for img in sorted_images:
-                    if img.image_path and img.image_path not in seen:
-                        seen.add(img.image_path)
-                        images_list.append(img.image_path)
+                    full_p = to_full_url(img.image_path)
+                    if full_p and full_p not in seen:
+                        seen.add(full_p)
+                        images_list.append(full_p)
             if not images_list and image_url_val:
                 images_list = [image_url_val]
+            elif images_list and not image_url_val:
+                image_url_val = images_list[0]
             
             prod_dict = {
                 "id": data.id,
@@ -118,12 +138,16 @@ class ProductResponse(ProductBase):
             }
             return prod_dict
         else:
+            if "image_url" in data:
+                data["image_url"] = to_full_url(data["image_url"])
             if not data.get("imagePaths") and data.get("image_url"):
                 data["imagePaths"] = [data["image_url"]]
             if data.get("imagePaths"):
-                data["imagePaths"] = list(dict.fromkeys([p for p in data["imagePaths"] if p]))
+                data["imagePaths"] = list(dict.fromkeys([to_full_url(p) for p in data["imagePaths"] if p]))
             
             data["images"] = data.get("imagePaths", [])
+            if not data.get("image_url") and data.get("images"):
+                data["image_url"] = data["images"][0]
             if "stock_quantity" in data and "stock" not in data:
                 data["stock"] = data["stock_quantity"]
         return data
