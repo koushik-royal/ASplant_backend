@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -16,7 +16,8 @@ try:
 except Exception as _folder_err:
     print(f"[SERVERLESS] Folder creation warning: {_folder_err}")
 
-from database.connection import engine, Base
+from database.connection import engine, Base, get_db
+from sqlalchemy.orm import Session
 # Import routers
 from routers import auth, products, cart_wishlist, orders, settings, notifications, interactions, admin, customer
 
@@ -29,16 +30,28 @@ def run_migrations():
     log_content.append("DATABASE SCHEMA REPORT\n======================\n")
     try:
         with engine.connect() as conn:
-            # Let's get tables list
-            tables_res = conn.execute(text("SHOW TABLES")).fetchall()
-            tables = [row[0] for row in tables_res]
-            log_content.append(f"Existing tables: {', '.join(tables)}\n")
+            # Fast, non-blocking single-query schema inspection:
+            # Query all existing tables and columns in a single round trip
+            table_cols = {}
+            try:
+                col_data = conn.execute(text(
+                    "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE()"
+                )).fetchall()
+                for t_name, c_name in col_data:
+                    table_cols.setdefault(t_name, set()).add(c_name)
+                tables = list(table_cols.keys())
+            except Exception:
+                # Fallback if information_schema query is restricted
+                tables_res = conn.execute(text("SHOW TABLES")).fetchall()
+                tables = [row[0] for row in tables_res]
+                for t in tables:
+                    c_rows = conn.execute(text(f"SHOW COLUMNS FROM `{t}`")).fetchall()
+                    table_cols[t] = {r[0] for r in c_rows}
             
-            for t in tables:
-                log_content.append(f"\nTable: {t}")
-                col_res = conn.execute(text(f"SHOW COLUMNS FROM {t}")).fetchall()
-                for col in col_res:
-                    log_content.append(f"  - {col[0]} ({col[1]})")
+            log_content.append(f"Existing tables: {', '.join(tables)}\n")
+            for t, cols_set in table_cols.items():
+                log_content.append(f"\nTable: {t}\n" + "\n".join(f"  - {c}" for c in sorted(cols_set)))
             
             # Check if we need to run full setup_db.sql
             # We run it if 'plants' table is missing OR if 'products' table still exists, 
@@ -86,70 +99,94 @@ def run_migrations():
                     conn.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
                     conn.execute(text("COMMIT;"))
                     log_content.append("\nsetup_db.sql executed successfully.")
+
+                    # Refresh schema cache after setup
+                    table_cols.clear()
+                    tables_res = conn.execute(text("SHOW TABLES")).fetchall()
+                    tables = [row[0] for row in tables_res]
+                    for t in tables:
+                        c_rows = conn.execute(text(f"SHOW COLUMNS FROM `{t}`")).fetchall()
+                        table_cols[t] = {r[0] for r in c_rows}
                 else:
                     log_content.append("\nsetup_db.sql NOT FOUND!")
             
-            # Always run column rename migrations if the tables exist to ensure alignment
-            tables_res = conn.execute(text("SHOW TABLES")).fetchall()
-            current_tables = [row[0] for row in tables_res]
-            if "plants" in current_tables:
-                col_res = conn.execute(text("SHOW COLUMNS FROM plants")).fetchall()
-                cols = [row[0] for row in col_res]
-                if "temperature" not in cols:
+            # Fast in-memory check for columns — only issue ALTER TABLE when a column is actually missing
+            # plants: temperature, humidity
+            plants_cols = table_cols.get("plants", set())
+            if "plants" in table_cols:
+                if "temperature" not in plants_cols:
                     conn.execute(text("ALTER TABLE plants ADD COLUMN temperature VARCHAR(100)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nplants: added column temperature")
-                if "humidity" not in cols:
+                if "humidity" not in plants_cols:
                     conn.execute(text("ALTER TABLE plants ADD COLUMN humidity VARCHAR(100)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nplants: added column humidity")
 
-            if "customers" in current_tables:
-                col_res = conn.execute(text("SHOW COLUMNS FROM customers")).fetchall()
-                cols = [row[0] for row in col_res]
-                if "password" in cols and "password_hash" not in cols:
+            # customers: password -> password_hash, district, country, fcm_token
+            cust_cols = table_cols.get("customers", set())
+            if "customers" in table_cols:
+                if "password" in cust_cols and "password_hash" not in cust_cols:
                     conn.execute(text("ALTER TABLE customers CHANGE COLUMN password password_hash VARCHAR(255) NOT NULL"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\ncustomers: renamed password to password_hash")
-                if "district" not in cols:
+                if "district" not in cust_cols:
                     conn.execute(text("ALTER TABLE customers ADD COLUMN district VARCHAR(100)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\ncustomers: added column district")
-                if "country" not in cols:
+                if "country" not in cust_cols:
                     conn.execute(text("ALTER TABLE customers ADD COLUMN country VARCHAR(100)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\ncustomers: added column country")
-                if "fcm_token" not in cols:
+                if "fcm_token" not in cust_cols:
                     conn.execute(text("ALTER TABLE customers ADD COLUMN fcm_token VARCHAR(255)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\ncustomers: added column fcm_token")
-            if "orders" in current_tables:
-                col_res = conn.execute(text("SHOW COLUMNS FROM orders")).fetchall()
-                cols = [row[0] for row in col_res]
-                if "district" not in cols:
+
+            # orders: district, country
+            orders_cols = table_cols.get("orders", set())
+            if "orders" in table_cols:
+                if "district" not in orders_cols:
                     conn.execute(text("ALTER TABLE orders ADD COLUMN district VARCHAR(100)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\norders: added column district")
-                if "country" not in cols:
+                if "country" not in orders_cols:
                     conn.execute(text("ALTER TABLE orders ADD COLUMN country VARCHAR(100)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\norders: added column country")
-            if "admins" in current_tables:
-                col_res = conn.execute(text("SHOW COLUMNS FROM admins")).fetchall()
-                cols = [row[0] for row in col_res]
-                if "password" in cols and "password_hash" not in cols:
+
+            # admins: password -> password_hash, full_name -> name, fcm_token
+            admins_cols = table_cols.get("admins", set())
+            if "admins" in table_cols:
+                if "password" in admins_cols and "password_hash" not in admins_cols:
                     conn.execute(text("ALTER TABLE admins CHANGE COLUMN password password_hash VARCHAR(255) NOT NULL"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nadmins: renamed password to password_hash")
-                if "full_name" in cols and "name" not in cols:
+                if "full_name" in admins_cols and "name" not in admins_cols:
                     conn.execute(text("ALTER TABLE admins CHANGE COLUMN full_name name VARCHAR(100) NOT NULL"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nadmins: renamed full_name to name")
-                if "fcm_token" not in cols:
+                if "fcm_token" not in admins_cols:
                     conn.execute(text("ALTER TABLE admins ADD COLUMN fcm_token VARCHAR(255)"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nadmins: added column fcm_token")
-            if "qr_payment" in current_tables:
-                col_res = conn.execute(text("SHOW COLUMNS FROM qr_payment")).fetchall()
-                cols = [row[0] for row in col_res]
-                if "account_holder" not in cols:
+
+            # qr_payment: account_holder
+            qr_cols = table_cols.get("qr_payment", set())
+            if "qr_payment" in table_cols:
+                if "account_holder" not in qr_cols:
                     conn.execute(text("ALTER TABLE qr_payment ADD COLUMN account_holder VARCHAR(100) DEFAULT 'AS Plants Admin'"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nqr_payment: added column account_holder")
-            if "notifications" in current_tables:
-                col_res = conn.execute(text("SHOW COLUMNS FROM notifications")).fetchall()
-                cols = [row[0] for row in col_res]
-                if "deleted" not in cols:
+
+            # notifications: deleted (idempotent, safe, preserved)
+            notif_cols = table_cols.get("notifications", set())
+            if "notifications" in table_cols:
+                if "deleted" not in notif_cols:
                     conn.execute(text("ALTER TABLE notifications ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+                    conn.execute(text("COMMIT;"))
                     log_content.append("\nnotifications: added column deleted")
+
             conn.execute(text("COMMIT;"))
     except Exception as e:
         log_content.append(f"\nMigration error: {e}")
@@ -167,9 +204,12 @@ from services.storage_service import storage_service
 
 def _background_migration_check():
     try:
+        # Brief yield to allow main server thread to bind immediately without contention
+        time.sleep(0.5)
         # Run schema checks in background on startup to ensure all columns are aligned
         run_migrations()
         Base.metadata.create_all(bind=engine)
+        print("[MIGRATION] Background check completed successfully.")
     except Exception as _bg_err:
         print(f"[MIGRATION] Background check warning: {_bg_err}")
 
@@ -209,10 +249,19 @@ def root_endpoint():
     return {"status": "ok", "service": "Plantora API"}
 
 @app.get("/api/health")
-def health_endpoint():
+def health_endpoint(db: Session = Depends(get_db)):
+    db_connected = False
+    try:
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        db_connected = True
+    except Exception as _db_err:
+        print(f"[HEALTH] DB pre-warm note: {_db_err}")
+
     return {
         "status": "ok",
         "service": "Plantora API",
+        "database": "connected" if db_connected else "disconnected",
         "timestamp": int(time.time()),
         "cloud_storage": storage_service.is_cloud_enabled()
     }
