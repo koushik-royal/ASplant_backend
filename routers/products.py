@@ -9,6 +9,7 @@ from models.user import User
 from models.interaction import Cart, Wishlist
 from schemas.product import ProductCreate, ProductUpdate, ProductResponse, CategoryCreate, CategoryResponse, to_full_url
 from config import settings
+from services.storage_service import storage_service
 from typing import List, Optional, Union
 
 router = APIRouter()
@@ -31,13 +32,8 @@ def create_category(
         
     image_url = ""
     if file:
-        os.makedirs(settings.PRODUCT_UPLOAD_DIR, exist_ok=True)
         filename = f"cat_{name.lower().replace(' ', '_')}{os.path.splitext(file.filename)[1]}"
-        filepath = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
-        with open(filepath, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
-        image_url = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
+        image_url = storage_service.upload_image(file.file, filename, folder="categories")
 
     category = Category(name=name, image_url=image_url)
     db.add(category)
@@ -157,18 +153,10 @@ def upload_images_temp(
 ):
     import time
     uploaded_urls = []
-    os.makedirs(settings.PRODUCT_UPLOAD_DIR, exist_ok=True)
-    base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
-    
     for index, file in enumerate(files):
         file_ext = os.path.splitext(file.filename)[1]
         filename = f"tmp_{int(time.time())}_{index}{file_ext}"
-        filepath = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
-        
-        with open(filepath, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        url_path = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
+        url_path = storage_service.upload_image(file.file, filename, folder="products")
         uploaded_urls.append(url_path)
         
     return {"status": "success", "urls": uploaded_urls}
@@ -288,18 +276,13 @@ def upload_product_images(
             img_key = extract_file_key(img.image_path)
             # Match either exact path or file key (filename)
             if img_key not in kept_keys and img.image_path not in kept_list:
-                if "uploads/products/" in img.image_path:
-                    filename = img.image_path.split("uploads/products/")[-1]
-                    local_file_path = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
-                    if os.path.exists(local_file_path):
-                        try:
-                            os.remove(local_file_path)
-                        except Exception as e:
-                            print(f"Error removing physical image file during update: {e}")
+                storage_service.delete_image(img.image_path)
                 db.delete(img)
             else:
-                # Update existing image URL to canonical full URL if needed
-                if "prod_" in img_key:
+                # Keep existing image URL intact if already full/cloud URL
+                if "res.cloudinary.com" in img.image_path or img.image_path.startswith("http://") or img.image_path.startswith("https://"):
+                    img.image_path = img.image_path
+                elif "prod_" in img_key:
                     img.image_path = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{img_key}"
                 else:
                     img.image_path = to_full_url(img.image_path)
@@ -307,14 +290,7 @@ def upload_product_images(
         # If files are uploaded and no kept images are specified, delete all old images
         if file_list:
             for img in existing_images:
-                if "uploads/products/" in img.image_path:
-                    filename = img.image_path.split("uploads/products/")[-1]
-                    local_file_path = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
-                    if os.path.exists(local_file_path):
-                        try:
-                            os.remove(local_file_path)
-                        except Exception as e:
-                            print(f"Error removing physical image file during complete clear: {e}")
+                storage_service.delete_image(img.image_path)
                 db.delete(img)
         
     # Process newly uploaded files
@@ -324,12 +300,7 @@ def upload_product_images(
             file_ext = os.path.splitext(file.filename)[1]
             import time
             filename = f"prod_{product_id}_{int(time.time())}_{index}{file_ext}"
-            filepath = os.path.join(settings.PRODUCT_UPLOAD_DIR, filename)
-            
-            with open(filepath, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-                
-            url_path = f"{base_url}/{settings.PRODUCT_UPLOAD_DIR}/{filename}"
+            url_path = storage_service.upload_image(file.file, filename, folder="products")
             
             prod_image = ProductImage(product_id=product_id, image_path=url_path, display_order=max_order + index)
             db.add(prod_image)

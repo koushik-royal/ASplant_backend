@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_DISPLAY_NAME: str = os.getenv("SMTP_DISPLAY_NAME", "AS Plants")
     
+    # Cloudinary Persistent Storage Settings
+    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
+    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+    CLOUDINARY_URL: str = os.getenv("CLOUDINARY_URL", "")
+    
     class Config:
         case_sensitive = True
 

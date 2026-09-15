@@ -13,6 +13,6 @@ email-validator==2.1.1
 websockets==12.0
 
 firebase-admin==6.5.0
-
+cloudinary==1.46.2
 
 requests==2.32.3

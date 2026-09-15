@@ -155,18 +155,21 @@ def run_migrations():
     except Exception as _log_err:
         print(f"[SERVERLESS] Could not write schema log file: {_log_err}")
 
-if not os.getenv("VERCEL"):
-    try:
-        run_migrations()
-    except Exception as _mig_err:
-        print(f"[MIGRATION] Migration skipped: {_mig_err}")
+import threading
+import time
+from services.storage_service import storage_service
 
-# Automatically create tables (Fallback if setup_db.sql not executed)
-if not os.getenv("VERCEL"):
+def _background_migration_check():
     try:
-        Base.metadata.create_all(bind=engine)
-    except Exception as _table_err:
-        print(f"[SERVERLESS] Table creation check warning: {_table_err}")
+        # Run schema checks in background only when needed without blocking server startup
+        if os.getenv("RUN_MIGRATIONS", "").lower() in ("true", "1") or not os.path.exists("db_schema_log.txt"):
+            run_migrations()
+            Base.metadata.create_all(bind=engine)
+    except Exception as _bg_err:
+        print(f"[MIGRATION] Background check warning: {_bg_err}")
+
+if not os.getenv("VERCEL"):
+    threading.Thread(target=_background_migration_check, daemon=True).start()
 
 app = FastAPI(
     title="AS Plants Backend API",
@@ -194,6 +197,20 @@ except Exception:
     pass
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Health check & root endpoints for instant warm-up
+@app.get("/")
+def root_endpoint():
+    return {"status": "ok", "service": "Plantora API"}
+
+@app.get("/api/health")
+def health_endpoint():
+    return {
+        "status": "ok",
+        "service": "Plantora API",
+        "timestamp": int(time.time()),
+        "cloud_storage": storage_service.is_cloud_enabled()
+    }
 
 # Include Routers
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
