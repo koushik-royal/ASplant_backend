@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from database.connection import get_db
 from models.user import User, OTPVerification
 from services.email_service import send_otp_email
+from services.storage_service import storage_service
 from config import settings
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel, EmailStr
@@ -207,12 +208,7 @@ def upload_customer_profile_image(email: str, file: UploadFile = File(...), db: 
     # Create file name based on customer ID
     file_ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"profile_{customer.id}{file_ext}"
-    filepath = os.path.join(settings.PROFILE_IMAGES_DIR, filename)
-    
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    url_path = f"{settings.SERVER_BASE_URL}/{settings.PROFILE_IMAGES_DIR}/{filename}"
+    url_path = storage_service.upload_image(file.file, filename, folder="profiles")
     customer.profile_image = url_path
     db.commit()
     db.refresh(customer)

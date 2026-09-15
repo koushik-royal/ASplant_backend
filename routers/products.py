@@ -50,7 +50,7 @@ def get_products(
     include_inactive: Optional[bool] = False,
     db: Session = Depends(get_db)
 ):
-    query = db.query(Product).options(joinedload(Product.images))
+    query = db.query(Product).options(joinedload(Product.images), joinedload(Product.category))
     if category and category != "All Plants":
         # Resolve category ID
         db_cat = db.query(Category).filter(Category.name == category).first()
@@ -71,7 +71,7 @@ def get_products(
 
 @router.get("/products/{product_id}", response_model=ProductResponse)
 def get_product(product_id: int, email: Optional[str] = None, db: Session = Depends(get_db)):
-    product = db.query(Product).options(joinedload(Product.images)).filter(Product.id == product_id).first()
+    product = db.query(Product).options(joinedload(Product.images), joinedload(Product.category)).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
@@ -266,7 +266,7 @@ def upload_product_images(
             return clean.split("/")[-1]
         return clean
 
-    base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
+    base_url = (settings.SERVER_BASE_URL or "https://asplant-backend-1.onrender.com").rstrip("/")
     existing_images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
 
     # Delete product images that are NOT in the kept list

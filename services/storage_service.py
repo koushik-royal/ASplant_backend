@@ -9,6 +9,7 @@ CLOUDINARY_AVAILABLE = False
 try:
     import cloudinary
     import cloudinary.uploader
+    from urllib.parse import urlparse
 
     cloud_name = settings.CLOUDINARY_CLOUD_NAME or os.getenv("CLOUDINARY_CLOUD_NAME")
     api_key = settings.CLOUDINARY_API_KEY or os.getenv("CLOUDINARY_API_KEY")
@@ -16,9 +17,17 @@ try:
     cloudinary_url = settings.CLOUDINARY_URL or os.getenv("CLOUDINARY_URL")
 
     if cloudinary_url:
-        cloudinary.config(cloudinary_url=cloudinary_url, secure=True)
-        CLOUDINARY_AVAILABLE = True
-        print("[STORAGE] Cloudinary configured via CLOUDINARY_URL.")
+        os.environ["CLOUDINARY_URL"] = cloudinary_url
+        parsed = urlparse(cloudinary_url)
+        c_name = parsed.hostname
+        c_key = parsed.username
+        c_secret = parsed.password
+        cloudinary.config(
+            cloud_name=c_name,
+            api_key=c_key,
+            api_secret=c_secret,
+            secure=True
+        )
     elif cloud_name and api_key and api_secret:
         cloudinary.config(
             cloud_name=cloud_name,
@@ -26,10 +35,14 @@ try:
             api_secret=api_secret,
             secure=True
         )
+
+    cfg = cloudinary.config()
+    if cfg.cloud_name and cfg.api_key and cfg.api_secret:
         CLOUDINARY_AVAILABLE = True
-        print(f"[STORAGE] Cloudinary configured for cloud '{cloud_name}'.")
+        print(f"[STORAGE] Cloudinary active & configured for cloud '{cfg.cloud_name}'.")
     else:
-        print("[STORAGE] Cloudinary credentials not detected; local disk fallback active.")
+        CLOUDINARY_AVAILABLE = False
+        print("[STORAGE] Cloudinary credentials incomplete or missing; local disk fallback active.")
 except Exception as e:
     print(f"[STORAGE] Cloudinary initialization warning: {e}")
     CLOUDINARY_AVAILABLE = False
@@ -66,7 +79,7 @@ class StorageService:
                     print(f"[STORAGE] Successfully uploaded to Cloudinary: {secure_url}")
                     return secure_url
             except Exception as cloud_err:
-                print(f"[STORAGE] Cloudinary upload failed ({cloud_err}); falling back to local disk.")
+                print(f"[STORAGE] Cloudinary upload failed: {type(cloud_err).__name__} ({cloud_err}); falling back to local disk.")
 
         # Local filesystem fallback
         local_dir = os.path.join(settings.UPLOAD_DIR, folder)
@@ -79,7 +92,7 @@ class StorageService:
         with open(local_path, "wb") as buffer:
             shutil.copyfileobj(file_obj, buffer)
 
-        base_url = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
+        base_url = (settings.SERVER_BASE_URL or "https://asplant-backend-1.onrender.com").rstrip("/")
         local_url = f"{base_url}/{settings.UPLOAD_DIR}/{folder}/{filename}"
         print(f"[STORAGE] Saved locally: {local_url}")
         return local_url

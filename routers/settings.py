@@ -6,6 +6,7 @@ from database.connection import get_db
 from models.setting import PaymentSetting, QrCode, DeliverySetting, StoreSetting
 from schemas.setting import PaymentSettingResponse, PaymentSettingUpdate, QrCodeResponse, DeliverySettingResponse, DeliverySettingUpdate, StoreSettingResponse, StoreSettingUpdate
 from config import settings
+from services.storage_service import storage_service
 from typing import List, Optional
 
 router = APIRouter()
@@ -152,15 +153,8 @@ def compatibility_upload_qr(
     if is_delete:
         if db_qr:
             db_qr.is_active = False
-            # Clean up old file
             if db_qr.image_path:
-                try:
-                    old_filename = os.path.basename(db_qr.image_path)
-                    old_filepath = os.path.join(settings.QR_UPLOAD_DIR, old_filename)
-                    if os.path.exists(old_filepath):
-                        os.remove(old_filepath)
-                except Exception as e:
-                    print("Error deleting old QR file:", e)
+                storage_service.delete_image(db_qr.image_path)
             db_qr.image_path = ""
             db.commit()
         return {"status": "success", "message": f"QR code for {provider} deactivated"}
@@ -169,24 +163,12 @@ def compatibility_upload_qr(
     image_url = db_qr.image_path if db_qr else ""
     
     if qr_image:
-        # Delete old QR file if replacing
         if db_qr and db_qr.image_path:
-            try:
-                old_filename = os.path.basename(db_qr.image_path)
-                old_filepath = os.path.join(settings.QR_UPLOAD_DIR, old_filename)
-                if os.path.exists(old_filepath):
-                    os.remove(old_filepath)
-            except Exception as e:
-                print("Error deleting old QR file:", e)
+            storage_service.delete_image(db_qr.image_path)
 
         file_ext = os.path.splitext(qr_image.filename)[1]
         filename = f"qr_{provider.lower().replace(' ', '_')}_{int(time.time())}{file_ext}"
-        filepath = os.path.join(settings.QR_UPLOAD_DIR, filename)
-        
-        with open(filepath, "wb") as buffer:
-            shutil.copyfileobj(qr_image.file, buffer)
-            
-        image_url = f"{settings.SERVER_BASE_URL}/{settings.QR_UPLOAD_DIR}/{filename}"
+        image_url = storage_service.upload_image(qr_image.file, filename, folder="qr_codes")
 
     if db_qr:
         db_qr.upi_id = upi_id or db_qr.upi_id

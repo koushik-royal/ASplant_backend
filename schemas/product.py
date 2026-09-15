@@ -43,10 +43,12 @@ def to_full_url(path: Optional[str]) -> str:
     if not p or p.startswith("res:"):
         return p
     from config import settings
-    base = (settings.SERVER_BASE_URL or "https://asplant-backend.onrender.com").rstrip("/")
+    base = (settings.SERVER_BASE_URL or "https://asplant-backend-1.onrender.com").rstrip("/")
     if ":8000" in p:
         sub = p.split(":8000", 1)[1]
         return f"{base}{sub}"
+    if "asplant-backend.onrender.com" in p and "asplant-backend-1.onrender.com" not in p:
+        p = p.replace("https://asplant-backend.onrender.com", base).replace("http://asplant-backend.onrender.com", base)
     if p.startswith("http://") or p.startswith("https://"):
         return p
     if p.startswith("/"):
@@ -109,6 +111,10 @@ class ProductResponse(ProductBase):
             elif images_list and not image_url_val:
                 image_url_val = images_list[0]
             
+            cat_val = getattr(data, 'category_name', '')
+            if not cat_val and hasattr(data, 'category') and data.category:
+                cat_val = getattr(data.category, 'name', '') or ""
+
             prod_dict = {
                 "id": data.id,
                 "name": data.name,
@@ -129,7 +135,7 @@ class ProductResponse(ProductBase):
                 "is_featured": data.is_featured,
                 "detailed_description": data.detailed_description,
                 "category_id": data.category_id,
-                "category": data.category.name if (hasattr(data, 'category') and data.category) else "",
+                "category": cat_val,
                 "rating": data.rating,
                 "reviews_count": data.reviews_count,
                 "image_url": image_url_val,

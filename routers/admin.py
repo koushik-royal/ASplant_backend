@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from database.connection import get_db
 from models.order import Order, OrderItem, Payment
@@ -22,18 +23,15 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     
     # 4. Total Revenue (sum of total_amount of delivered or confirmed or paid orders)
     # Revenue must use real paid orders. Sum orders.total_amount where payment_status='Paid'.
-    revenue_query = db.query(Order).filter(Order.payment_status.ilike('paid')).all()
-    total_revenue = sum(o.total_amount for o in revenue_query)
+    total_revenue = db.query(func.coalesce(func.sum(Order.total_amount), 0)).filter(Order.payment_status.ilike('paid')).scalar() or 0
     
-    # 5. Payment Statistics (Count of paid vs unpaid)
-    payments = db.query(Payment).all()
-    paid_count = sum(1 for p in payments if p.status == "PAID")
-    unpaid_count = sum(1 for p in payments if p.status == "UNPAID")
+    # 5. Payment Statistics (Count of paid vs unpaid and revenue by method)
+    payment_counts = db.query(Payment.status, func.count(Payment.id)).group_by(Payment.status).all()
+    paid_count = next((c for s, c in payment_counts if s == "PAID"), 0)
+    unpaid_count = next((c for s, c in payment_counts if s == "UNPAID"), 0)
     
-    # Break down by payment method
-    methods = {}
-    for p in payments:
-        methods[p.payment_method] = methods.get(p.payment_method, 0) + p.amount
+    method_sums = db.query(Payment.payment_method, func.sum(Payment.amount)).group_by(Payment.payment_method).all()
+    methods = {m: (amt or 0) for m, amt in method_sums if m}
         
     payment_stats = {
         "paid_orders": paid_count,
@@ -43,7 +41,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     
     # 6. Recent Orders (limit 5)
     recent = db.query(Order).options(
-        joinedload(Order.items).joinedload(OrderItem.product)
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.category)
     ).order_by(Order.id.desc()).limit(5).all()
     
     # Convert to response objects

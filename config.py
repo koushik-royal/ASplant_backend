@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30 # 30 days session
     
     # Server base URL — uses SERVER_BASE_URL env, or RENDER_EXTERNAL_URL on Render, falling back to production URL
-    SERVER_BASE_URL: str = os.getenv("SERVER_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "https://asplant-backend.onrender.com"
+    SERVER_BASE_URL: str = os.getenv("SERVER_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "https://asplant-backend-1.onrender.com"
     
     # Upload folder paths
     UPLOAD_DIR: str = "uploads"

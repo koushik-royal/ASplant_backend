@@ -11,6 +11,7 @@ from database.connection import get_db
 from models.user import User, Admin, OTPVerification
 from schemas.auth import UserRegister, UserLogin, UserResponse, UserUpdate, AdminRegister, AdminLogin, AdminResponse, AdminUpdate
 from services.auth_service import auth_service
+from services.storage_service import storage_service
 from config import settings
 from typing import List
 # pyrefly: ignore [missing-import]
@@ -197,12 +198,7 @@ def upload_user_avatar(email: str, file: UploadFile = File(...), db: Session = D
     
     file_ext = os.path.splitext(file.filename)[1]
     filename = f"avatar_{user.id}{file_ext}"
-    filepath = os.path.join(settings.PROFILE_UPLOAD_DIR, filename)
-    
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    url_path = f"{settings.SERVER_BASE_URL}/{settings.PROFILE_UPLOAD_DIR}/{filename}"
+    url_path = storage_service.upload_image(file.file, filename, folder="profiles")
     user.profile_image = url_path
     db.commit()
     db.refresh(user)
@@ -325,12 +321,7 @@ def upload_admin_avatar(email: str, file: UploadFile = File(...), db: Session = 
     
     file_ext = os.path.splitext(file.filename)[1]
     filename = f"admin_avatar_{admin.id}{file_ext}"
-    filepath = os.path.join(settings.PROFILE_UPLOAD_DIR, filename)
-    
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    url_path = f"{settings.SERVER_BASE_URL}/{settings.PROFILE_UPLOAD_DIR}/{filename}"
+    url_path = storage_service.upload_image(file.file, filename, folder="admin_profiles")
     admin.profile_image = url_path
     db.commit()
     db.refresh(admin)

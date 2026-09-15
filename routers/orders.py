@@ -202,12 +202,18 @@ def place_order(email: str, payload: OrderCreate, background_tasks: BackgroundTa
 @router.get("/orders", response_model=List[OrderResponse])
 def get_orders(email: str, role: Optional[str] = "customer", db: Session = Depends(get_db)):
     if role == "admin":
-        orders = db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images)).order_by(Order.id.desc()).all()
+        orders = db.query(Order).options(
+            joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
+            joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.category)
+        ).order_by(Order.id.desc()).all()
     else:
         user = db.query(User).filter(User.email == email).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        orders = db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images)).filter(Order.user_id == user.id).order_by(Order.id.desc()).all()
+        orders = db.query(Order).options(
+            joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
+            joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.category)
+        ).filter(Order.user_id == user.id).order_by(Order.id.desc()).all()
 
     order_ids = [o.order_id for o in orders]
     if order_ids:
@@ -221,7 +227,10 @@ def get_orders(email: str, role: Optional[str] = "customer", db: Session = Depen
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
 def get_order_by_id(order_id: str, db: Session = Depends(get_db)):
-    order = db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images)).filter(Order.order_id == order_id).first()
+    order = db.query(Order).options(
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.category)
+    ).filter(Order.order_id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
