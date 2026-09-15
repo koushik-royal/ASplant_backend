@@ -11,6 +11,7 @@ from models.product import Product
 from models.setting import StoreSetting
 from schemas.order import OrderCreate, OrderResponse, OrderUpdateStatus
 from config import settings
+from services.storage_service import storage_service
 from typing import List, Optional
 from pydantic import BaseModel
 
@@ -338,14 +339,9 @@ def upload_payment_screenshot(
         payment = Payment(order_id=order_id, user_id=order.user_id, payment_method=order.payment_method, amount=order.total_amount)
         db.add(payment)
         
-    file_ext = os.path.splitext(file.filename)[1]
+    file_ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"pay_{order_id.replace('#', '')}{file_ext}"
-    filepath = os.path.join(settings.PAYMENT_UPLOAD_DIR, filename)
-    
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    url_path = f"{settings.SERVER_BASE_URL}/{settings.PAYMENT_UPLOAD_DIR}/{filename}"
+    url_path = storage_service.upload_image(file.file, filename, folder="payments")
     payment.screenshot_path = url_path
     payment.transaction_id = transaction_id
     if order.payment_method == "QR Payment":
@@ -405,20 +401,14 @@ def upload_delivery_proof(
         raise HTTPException(status_code=404, detail="Order not found")
         
     # Save proof image
-    proof_ext = os.path.splitext(proof_image.filename)[1]
+    proof_ext = os.path.splitext(proof_image.filename)[1] or ".jpg"
     proof_filename = f"proof_{order_id.replace('#', '')}{proof_ext}"
-    proof_filepath = os.path.join(settings.PROOF_UPLOAD_DIR, proof_filename)
-    with open(proof_filepath, "wb") as buffer:
-        shutil.copyfileobj(proof_image.file, buffer)
-    proof_url = f"{settings.SERVER_BASE_URL}/{settings.PROOF_UPLOAD_DIR}/{proof_filename}"
+    proof_url = storage_service.upload_image(proof_image.file, proof_filename, folder="proofs")
     
     # Save signature image
-    sig_ext = os.path.splitext(signature_image.filename)[1]
+    sig_ext = os.path.splitext(signature_image.filename)[1] or ".png"
     sig_filename = f"sig_{order_id.replace('#', '')}{sig_ext}"
-    sig_filepath = os.path.join(settings.SIGNATURE_UPLOAD_DIR, sig_filename)
-    with open(sig_filepath, "wb") as buffer:
-        shutil.copyfileobj(signature_image.file, buffer)
-    sig_url = f"{settings.SERVER_BASE_URL}/{settings.SIGNATURE_UPLOAD_DIR}/{sig_filename}"
+    sig_url = storage_service.upload_image(signature_image.file, sig_filename, folder="signatures")
     
     # Save to delivery_proof table
     proof_rec = DeliveryProof(

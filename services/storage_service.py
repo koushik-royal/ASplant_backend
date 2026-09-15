@@ -1,7 +1,7 @@
 import os
 import shutil
 import time
-from typing import Optional, BinaryIO
+from typing import Optional, BinaryIO, Union
 from config import settings
 
 # Cloudinary configuration
@@ -19,9 +19,9 @@ try:
     if cloudinary_url:
         os.environ["CLOUDINARY_URL"] = cloudinary_url
         parsed = urlparse(cloudinary_url)
-        c_name = parsed.hostname
-        c_key = parsed.username
-        c_secret = parsed.password
+        c_name = parsed.hostname or cloud_name
+        c_key = parsed.username or api_key
+        c_secret = parsed.password or api_secret
         cloudinary.config(
             cloud_name=c_name,
             api_key=c_key,
@@ -54,21 +54,36 @@ class StorageService:
         return CLOUDINARY_AVAILABLE
 
     @staticmethod
-    def upload_image(file_obj: BinaryIO, filename: str, folder: str = "products") -> str:
+    def upload_image(file_obj: Union[BinaryIO, bytes], filename: str, folder: str = "products") -> str:
         """
-        Uploads an image file object to persistent Cloudinary storage if available.
-        Falls back safely to local container storage if Cloudinary is not configured.
-        Returns a permanent HTTPS URL.
+        Uploads an image file object or raw bytes to persistent Cloudinary storage.
+        Reads uploaded file safely into bytes before upload.
+        Returns the permanent HTTPS URL.
+        Logs the exact Cloudinary error if upload fails and raises an HTTPException.
+        Does not silently fall back to Render local storage when Cloudinary is configured.
         """
+        # Read uploaded file safely into bytes
+        file_bytes: bytes = b""
+        if isinstance(file_obj, bytes):
+            file_bytes = file_obj
+        elif hasattr(file_obj, "read"):
+            if hasattr(file_obj, "seek"):
+                file_obj.seek(0)
+            file_bytes = file_obj.read()
+        elif hasattr(file_obj, "file") and hasattr(file_obj.file, "read"):
+            if hasattr(file_obj.file, "seek"):
+                file_obj.file.seek(0)
+            file_bytes = file_obj.file.read()
+
+        if not file_bytes:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Empty or invalid image data provided.")
+
         if CLOUDINARY_AVAILABLE:
             try:
-                # Seek to beginning in case stream was partially read
-                if hasattr(file_obj, "seek"):
-                    file_obj.seek(0)
-
                 base_name = os.path.splitext(filename)[0]
                 upload_res = cloudinary.uploader.upload(
-                    file_obj,
+                    file_bytes,
                     folder=f"plantora/{folder}",
                     public_id=f"{base_name}_{int(time.time())}",
                     resource_type="image",
@@ -78,23 +93,30 @@ class StorageService:
                 if secure_url:
                     print(f"[STORAGE] Successfully uploaded to Cloudinary: {secure_url}")
                     return secure_url
+                raise RuntimeError(f"Cloudinary upload succeeded but no URL returned: {upload_res}")
             except Exception as cloud_err:
-                print(f"[STORAGE] Cloudinary upload failed: {type(cloud_err).__name__} ({cloud_err}); falling back to local disk.")
+                err_type = type(cloud_err).__name__
+                err_str = str(cloud_err)
+                print(f"[STORAGE] Cloudinary upload failed for '{filename}' in folder '{folder}': {err_type}: {err_str}")
+                import traceback
+                traceback.print_exc()
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Cloud image upload failed: {err_type} - {err_str}"
+                )
 
-        # Local filesystem fallback
+        # Local filesystem fallback ONLY when Cloudinary is NOT configured (offline development)
         local_dir = os.path.join(settings.UPLOAD_DIR, folder)
         os.makedirs(local_dir, exist_ok=True)
         local_path = os.path.join(local_dir, filename)
 
-        if hasattr(file_obj, "seek"):
-            file_obj.seek(0)
-
         with open(local_path, "wb") as buffer:
-            shutil.copyfileobj(file_obj, buffer)
+            buffer.write(file_bytes)
 
         base_url = (settings.SERVER_BASE_URL or "https://asplant-backend-1.onrender.com").rstrip("/")
         local_url = f"{base_url}/{settings.UPLOAD_DIR}/{folder}/{filename}"
-        print(f"[STORAGE] Saved locally: {local_url}")
+        print(f"[STORAGE] Saved locally (offline fallback): {local_url}")
         return local_url
 
     @staticmethod
