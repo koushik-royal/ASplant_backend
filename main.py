@@ -144,6 +144,12 @@ def run_migrations():
                 if "account_holder" not in cols:
                     conn.execute(text("ALTER TABLE qr_payment ADD COLUMN account_holder VARCHAR(100) DEFAULT 'AS Plants Admin'"))
                     log_content.append("\nqr_payment: added column account_holder")
+            if "notifications" in current_tables:
+                col_res = conn.execute(text("SHOW COLUMNS FROM notifications")).fetchall()
+                cols = [row[0] for row in col_res]
+                if "deleted" not in cols:
+                    conn.execute(text("ALTER TABLE notifications ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+                    log_content.append("\nnotifications: added column deleted")
             conn.execute(text("COMMIT;"))
     except Exception as e:
         log_content.append(f"\nMigration error: {e}")
@@ -161,10 +167,9 @@ from services.storage_service import storage_service
 
 def _background_migration_check():
     try:
-        # Run schema checks in background only when needed without blocking server startup
-        if os.getenv("RUN_MIGRATIONS", "").lower() in ("true", "1") or not os.path.exists("db_schema_log.txt"):
-            run_migrations()
-            Base.metadata.create_all(bind=engine)
+        # Run schema checks in background on startup to ensure all columns are aligned
+        run_migrations()
+        Base.metadata.create_all(bind=engine)
     except Exception as _bg_err:
         print(f"[MIGRATION] Background check warning: {_bg_err}")
 
