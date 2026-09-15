@@ -1,12 +1,12 @@
 import os
 import shutil
 import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks, Query, Header
 from sqlalchemy.orm import Session, joinedload
 from database.connection import get_db
 from models.order import Order, OrderItem, DeliveryTracking, DeliveryProof, Payment
 from models.interaction import Notification, Rating
-from models.user import User
+from models.user import User, Admin
 from models.product import Product
 from models.setting import StoreSetting
 from schemas.order import OrderCreate, OrderResponse, OrderUpdateStatus
@@ -453,3 +453,118 @@ def upload_delivery_proof(
 def get_order_tracking(order_id: str, db: Session = Depends(get_db)):
     logs = db.query(DeliveryTracking).filter(DeliveryTracking.order_id == order_id).order_by(DeliveryTracking.timestamp.asc()).all()
     return logs
+
+# --- ORDER DELETION (ADMIN ONLY) ---
+
+@router.delete("/orders/{order_id}")
+def delete_order(
+    order_id: str,
+    admin_email: Optional[str] = Query(None, description="Admin email for authorization"),
+    x_admin_email: Optional[str] = Header(None, alias="X-Admin-Email", description="Admin email header for authorization"),
+    db: Session = Depends(get_db)
+):
+    """
+    Safely and permanently deletes an order and all its associated records:
+    - Verifies admin privileges.
+    - Removes related notifications.
+    - Removes ratings, delivery proof, delivery tracking, payment, and order items.
+    - Removes the parent order record.
+    - Cleans up Cloudinary or local storage files associated with proof/signature/payment screenshots.
+    - Uses an atomic transaction that rolls back on any error.
+    """
+    # 1. Admin authorization check
+    email = (admin_email or x_admin_email or "").strip()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin email is required to authorize order deletion."
+        )
+
+    admin = db.query(Admin).filter(Admin.email == email).first()
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Only registered administrators can delete orders."
+        )
+
+    # 2. Locate the order (handles both '#PLT12345' and 'PLT12345')
+    order = db.query(Order).filter(Order.order_id == order_id).first()
+    if not order and not order_id.startswith("#"):
+        order = db.query(Order).filter(Order.order_id == f"#{order_id}").first()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order '{order_id}' not found."
+        )
+
+    target_order_id = order.order_id
+
+    # 3. Collect associated storage file paths/URLs to delete after successful DB commit
+    files_to_delete = set()
+    if order.delivery_proof_path:
+        files_to_delete.add(order.delivery_proof_path)
+    if order.customer_signature_path:
+        files_to_delete.add(order.customer_signature_path)
+
+    proof_records = db.query(DeliveryProof).filter(DeliveryProof.order_id == target_order_id).all()
+    for proof in proof_records:
+        if proof.image_path:
+            files_to_delete.add(proof.image_path)
+        if proof.signature_path:
+            files_to_delete.add(proof.signature_path)
+
+    payment_records = db.query(Payment).filter(Payment.order_id == target_order_id).all()
+    for pay in payment_records:
+        if pay.screenshot_path:
+            files_to_delete.add(pay.screenshot_path)
+
+    # 4. Atomic database transaction
+    try:
+        # 4a. Delete related notifications (notifications table has no FK to orders)
+        deleted_notifs = db.query(Notification).filter(
+            (Notification.message.like(f"%{target_order_id}%")) |
+            (Notification.title.like(f"%{target_order_id}%"))
+        ).delete(synchronize_session=False)
+
+        # 4b. Delete plant ratings associated with this order
+        db.query(Rating).filter(Rating.order_id == target_order_id).delete(synchronize_session=False)
+
+        # 4c. Delete delivery proofs
+        db.query(DeliveryProof).filter(DeliveryProof.order_id == target_order_id).delete(synchronize_session=False)
+
+        # 4d. Delete delivery tracking history
+        db.query(DeliveryTracking).filter(DeliveryTracking.order_id == target_order_id).delete(synchronize_session=False)
+
+        # 4e. Delete payment records
+        db.query(Payment).filter(Payment.order_id == target_order_id).delete(synchronize_session=False)
+
+        # 4f. Delete order items
+        db.query(OrderItem).filter(OrderItem.order_id == target_order_id).delete(synchronize_session=False)
+
+        # 4g. Delete the parent order
+        db.delete(order)
+
+        # Commit all changes atomically
+        db.commit()
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete order {target_order_id}: {str(exc)}"
+        )
+
+    # 5. Clean up Cloudinary / local storage files safely after DB commit
+    for file_url in files_to_delete:
+        try:
+            storage_service.delete_image(file_url)
+        except Exception as file_err:
+            print(f"[STORAGE] Warning: Failed to clean up file '{file_url}': {file_err}")
+
+    return {
+        "status": "success",
+        "message": f"Order {target_order_id} and all related records have been permanently deleted.",
+        "order_id": target_order_id,
+        "notifications_removed": deleted_notifs
+    }
